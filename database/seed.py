@@ -46,6 +46,81 @@ _SEED_SOURCES: list[tuple[str, str, SourceType]] = [
         "https://hathalyoum.net/news/%D8%A7%D9%84%D8%B1%D9%82%D8%A9",
         SourceType.HTML,
     ),
+    # Broader Syrian/NE-Syria outlets added on user request (free — no
+    # per-source cost like the Facebook/Apify sources below). Existence and
+    # reachability checked via HTTP request; several respected outlets
+    # (SOHR, North Press, Zaman Al Wasl, Orient Net, Kurdistan24, SDF Press,
+    # Al Arabiya, Al Modon, Rai Alyoum, Nedaa Post) return 403/406 to a bare
+    # curl request — almost certainly Cloudflare/WAF bot-blocking rather
+    # than the site being unreachable, so they're kept, disabled, same as
+    # the rest: selector setup requires visiting them in an actual browser
+    # anyway, and that may also reveal they need the HTML adapter's
+    # User-Agent tuned or that they're unscrapable this way — that's a
+    # per-source risk to confirm during selector setup, not before.
+    ("North Press Agency (نورث برس)", "https://npasyria.com/", SourceType.HTML),
+    ("North Press Agency English", "https://npasyria.com/en/", SourceType.HTML),
+    ("Hawar News Agency (ANHA)", "https://hawarnews.com/ar", SourceType.HTML),
+    ("Deir Ezzor 24", "https://deirezzor24.net/", SourceType.HTML),
+    ("Deir Ezzor 24 English", "https://deirezzor24.net/en/", SourceType.HTML),
+    ("Zaman Al Wasl", "https://www.zamanalwsl.net/", SourceType.HTML),
+    ("Zaman Al Wasl English", "https://en.zamanalwsl.net/", SourceType.HTML),
+    ("Orient Net", "https://orient-news.net/ar", SourceType.HTML),
+    ("الحل نت", "https://7al.net/", SourceType.HTML),
+    (
+        "SOHR - المرصد السوري لحقوق الإنسان",
+        "https://www.syriahr.com/",
+        SourceType.HTML,
+    ),
+    ("Syria Direct", "https://syriadirect.org/ar/", SourceType.HTML),
+    ("Syria News", "https://syria.news/", SourceType.HTML),
+    (
+        "عنب بلدي - أخبار الرقة",
+        "https://www.enabbaladi.net/archives/tag/%D8%A7%D9%84%D8%B1%D9%82%D8%A9",
+        SourceType.HTML,
+    ),
+    (
+        "Enab Baladi English - Raqqa",
+        "https://english.enabbaladi.net/archives/category/news/raqqa",
+        SourceType.HTML,
+    ),
+    ("Rozana روزنة", "https://www.rozana.fm/", SourceType.HTML),
+    ("Athr Press أثر برس", "https://athrpress.com/", SourceType.HTML),
+    ("Rased راصد", "https://rasid.com/", SourceType.HTML),
+    ("Sound and Picture صوت وصورة", "https://sound-and-picture.com/", SourceType.HTML),
+    ("Al Arabiya - Syria", "https://www.alarabiya.net/syria", SourceType.HTML),
+    ("Al Jazeera Arabic - Syria", "https://www.aljazeera.net/where/syria/", SourceType.HTML),
+    ("Al Jazeera English - Syria", "https://www.aljazeera.com/where/syria/", SourceType.HTML),
+    (
+        "Anadolu Agency Arabic - Syria",
+        "https://www.aa.com.tr/ar/%D8%B3%D9%88%D8%B1%D9%8A%D8%A7",
+        SourceType.HTML,
+    ),
+    ("Rudaw Arabic", "https://www.rudaw.net/arabic", SourceType.HTML),
+    ("Rudaw English", "https://www.rudaw.net/english", SourceType.HTML),
+    ("Rai Alyoum رأي اليوم", "https://www.raialyoum.com/", SourceType.HTML),
+    ("SDF Press", "https://sdf-press.com/", SourceType.HTML),
+    ("Kurdistan24 Arabic", "https://www.kurdistan24.net/ar", SourceType.HTML),
+    ("Al Modon المدن", "https://www.almodon.com/", SourceType.HTML),
+    ("Baladi News بلدي نيوز", "https://baladi-news.com/", SourceType.HTML),
+    ("Euphrates Post بوست الفرات", "https://euphratespost.com/", SourceType.HTML),
+    ("Rojava Information Center", "https://rojavainformationcenter.com/", SourceType.HTML),
+    ("Shaam Network شبكة شام", "https://www.shaam.org/", SourceType.HTML),
+    ("Suwar Magazine سوّر", "https://suwar-magazine.org/", SourceType.HTML),
+    ("Watan FM وطن اف ام", "https://www.watanfm.com/", SourceType.HTML),
+    ("Al Iqtisadi الاقتصادي", "https://eqtsad.net/", SourceType.HTML),
+    (
+        "اليوم السابع - سوريا",
+        "https://www.youm7.com/Section/%D8%B3%D9%88%D8%B1%D9%8A%D8%A7/319/1",
+        SourceType.HTML,
+    ),
+    ("Sputnik Arabic - Syria", "https://sarabic.ae/syria", SourceType.HTML),
+    ("Shafaq News شفق نيوز", "https://shafaq.com/ar", SourceType.HTML),
+    ("الوطن سوريا", "https://alwatan.sy/", SourceType.HTML),
+    ("نبض Nabd", "https://nabd.com/", SourceType.HTML),
+    ("SANA English", "https://sana.sy/en/", SourceType.HTML),
+    ("العربي الجديد", "https://www.alaraby.co.uk/syria", SourceType.HTML),
+    ("The New Arab", "https://www.newarab.com/syria", SourceType.HTML),
+    ("Nedaa Post نداء بوست", "https://nedaa-post.com/", SourceType.HTML),
 ]
 
 # Facebook Pages/profiles supplied directly by the user (resolved from
