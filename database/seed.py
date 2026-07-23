@@ -90,7 +90,6 @@ _SEED_SOURCES: list[tuple[str, str, SourceType]] = [
     ),
     ("Rozana روزنة", "https://www.rozana.fm/", SourceType.HTML),
     ("Athr Press أثر برس", "https://athrpress.com/", SourceType.HTML),
-    ("Sound and Picture صوت وصورة", "https://sound-and-picture.com/", SourceType.HTML),
     ("Al Arabiya - Syria", "https://www.alarabiya.net/syria", SourceType.HTML),
     ("Al Jazeera Arabic - Syria", "https://www.aljazeera.net/where/syria/", SourceType.HTML),
     ("Al Jazeera English - Syria", "https://www.aljazeera.com/where/syria/", SourceType.HTML),
@@ -107,7 +106,6 @@ _SEED_SOURCES: list[tuple[str, str, SourceType]] = [
     ("Al Modon المدن", "https://www.almodon.com/", SourceType.HTML),
     ("Shaam Network شبكة شام", "https://www.shaam.org/", SourceType.HTML),
     ("Suwar Magazine سوّر", "https://suwar-magazine.org/", SourceType.HTML),
-    ("Watan FM وطن اف ام", "https://www.watanfm.com/", SourceType.HTML),
     ("Al Iqtisadi الاقتصادي", "https://eqtsad.net/", SourceType.HTML),
     (
         "اليوم السابع - سوريا",
@@ -292,11 +290,17 @@ async def seed_sources() -> None:
 # browser, per the Phase-2 resource-budget decision), are deliberately left
 # out and stay disabled: North Press Agency (npasyria.com), هذا اليوم
 # (hathalyoum.net), تلفزيون سوريا (syria.tv), زمان الوصل (both editions),
-# Orient Net, SOHR, Kurdistan24, SDF Press, رأي اليوم, المدن, العربي الجديد,
-# The New Arab, the Enab Baladi tag/category pages, Anadolu, Rudaw (both
-# editions), نبض/Nabd. رويانا (Rozana), العربية (Al Arabiya), الوطن سوريا,
-# and سبوتنيك عربي fetched real HTML but didn't yield an obvious selector on
-# a first pass — worth a second look, not confirmed dead ends.
+# Orient Net, SOHR, Kurdistan24, SDF Press, رأي اليوم, المدن (Al Arabiya and
+# Al Modon both return a literal "Access Denied" Akamai page), العربي
+# الجديد, The New Arab, the Enab Baladi tag/category pages, Anadolu, Rudaw
+# (both editions), نبض/Nabd. رويانا (Rozana) fetched real HTML but its
+# homepage only exposes a small "featured stories" widget (4 items, no
+# working link) — worth checking a dedicated /news-style page instead of
+# the homepage, not confirmed a dead end. Sound and Picture
+# (sound-and-picture.com) and Watan FM (watanfm.com) were removed rather
+# than left disabled: the former now serves a German-language casino/
+# gambling site and the latter is a bare GoDaddy Website Builder
+# placeholder — both domains have been abandoned by their original owners.
 _CONFIGURED_SELECTORS: dict[str, dict[str, object]] = {
     "https://7al.net/": {"list_selector": "a.card", "enabled": True},
     "https://deirezzor24.net/": {"list_selector": ".jeg_post_title", "enabled": True},
@@ -328,6 +332,12 @@ _CONFIGURED_SELECTORS: dict[str, dict[str, object]] = {
     },
     "https://shafaq.com/ar": {"list_selector": "a.article-item", "enabled": True},
     "https://www.shaam.org/": {"list_selector": ".hero-item", "enabled": True},
+    "https://athrpress.com/": {"list_selector": ".pcbg-title", "enabled": True},
+    "https://alwatan.sy/": {"list_selector": ".brxe-post-title", "enabled": True},
+    "https://sarabic.ae/syria": {
+        "list_selector": ".cell-carousel__item-link",
+        "enabled": True,
+    },
 }
 
 
