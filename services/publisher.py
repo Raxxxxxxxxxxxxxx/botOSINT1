@@ -11,6 +11,7 @@ source-processing tasks racing to send independently.
 from __future__ import annotations
 
 import asyncio
+from html import escape as escape_html
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
@@ -95,11 +96,18 @@ class PublishQueue:
 
 
 def _format_message(item: NewsItem) -> str:
-    """Render a `NewsItem` as a Telegram HTML-formatted message."""
-    lines = [f"📰 <b>{item.title}</b>"]
+    """Render a `NewsItem` as a Telegram HTML-formatted message.
+
+    Scraped title/summary text and article URLs (query strings routinely
+    contain a bare `&`) are untrusted as far as Telegram's HTML parse mode
+    is concerned — an unescaped `<`/`&` makes the whole `sendMessage` call
+    fail with "can't parse entities", silently dropping the item after
+    exhausting retries.
+    """
+    lines = [f"📰 <b>{escape_html(item.title)}</b>"]
     if item.summary:
-        lines.append(item.summary)
+        lines.append(escape_html(item.summary))
     if item.category:
-        lines.append(f"🏷 {item.category}")
-    lines.append(item.url)
+        lines.append(f"🏷 {escape_html(item.category)}")
+    lines.append(escape_html(item.url))
     return "\n\n".join(lines)

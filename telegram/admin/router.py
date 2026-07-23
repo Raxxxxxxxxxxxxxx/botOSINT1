@@ -10,11 +10,12 @@ fallback reply instead of revealing this exists.
 from __future__ import annotations
 
 import asyncio
+from html import escape as escape_html
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from loguru import logger
 
 from config.settings import get_settings
@@ -65,6 +66,26 @@ _SCOPE_LABELS: dict[str, str] = {
 }
 
 
+async def safe_edit_text(
+    callback: CallbackQuery, text: str, reply_markup: InlineKeyboardMarkup
+) -> None:
+    """Edit the panel message, tolerating Telegram's "message is not modified".
+
+    Landing on a screen whose text+keyboard happen to be byte-identical to
+    what's already displayed (e.g. tapping "تحديث" when nothing changed) is
+    a real, common case for a dashboard like this, and Telegram rejects
+    that edit outright. Left unhandled, the exception propagates out of
+    the handler before `callback.answer()` ever runs — the tap just spins
+    forever from the user's side, indistinguishable from "the button does
+    nothing" even though the routing/logic worked correctly.
+    """
+    try:
+        await callback.message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc):
+            raise
+
+
 @router.message(Command("admin"))
 async def open_panel(message: Message) -> None:
     await message.answer(_MENU_TEXT, reply_markup=main_menu_keyboard())
@@ -77,7 +98,7 @@ async def noop(callback: CallbackQuery) -> None:
 
 @router.callback_query(AdminNav.filter(F.screen == "menu"))
 async def show_menu(callback: CallbackQuery) -> None:
-    await callback.message.edit_text(_MENU_TEXT, reply_markup=main_menu_keyboard())
+    await safe_edit_text(callback, _MENU_TEXT, main_menu_keyboard())
     await callback.answer()
 
 
@@ -85,9 +106,7 @@ async def show_menu(callback: CallbackQuery) -> None:
 async def show_stats(callback: CallbackQuery) -> None:
     async with get_session() as session:
         stats = await get_stats(session)
-    await callback.message.edit_text(
-        _format_stats(stats), reply_markup=back_to_menu_keyboard()
-    )
+    await safe_edit_text(callback, _format_stats(stats), back_to_menu_keyboard())
     await callback.answer()
 
 
@@ -112,9 +131,10 @@ async def show_sources_page(callback: CallbackQuery, callback_data: SourcesPage)
     if not sources and callback_data.page > 0:
         await callback.answer("لا توجد صفحة أخرى.", show_alert=False)
         return
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"🗂 <b>المصادر</b> ({total})\n\nاضغط على مصدر لتفعيله/تعطيله:",
-        reply_markup=sources_page_keyboard(sources, callback_data.page, total),
+        sources_page_keyboard(sources, callback_data.page, total),
     )
     await callback.answer()
 
@@ -127,18 +147,18 @@ async def toggle_source_handler(callback: CallbackQuery, callback_data: SourceTo
             await callback.answer("هذا المصدر لم يعد موجوداً.", show_alert=True)
             return
         sources, total = await get_sources_page(session, callback_data.page)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"🗂 <b>المصادر</b> ({total})\n\nاضغط على مصدر لتفعيله/تعطيله:",
-        reply_markup=sources_page_keyboard(sources, callback_data.page, total),
+        sources_page_keyboard(sources, callback_data.page, total),
     )
     await callback.answer("تم التفعيل ✅" if new_state else "تم التعطيل ❌")
 
 
 @router.callback_query(AdminNav.filter(F.screen == "delete"))
 async def show_delete_scopes(callback: CallbackQuery) -> None:
-    await callback.message.edit_text(
-        "🗑 <b>حذف أخبار من القناة</b>\n\nاختر نطاق الحذف:",
-        reply_markup=delete_scope_keyboard(),
+    await safe_edit_text(
+        callback, "🗑 <b>حذف أخبار من القناة</b>\n\nاختر نطاق الحذف:", delete_scope_keyboard()
     )
     await callback.answer()
 
@@ -152,9 +172,10 @@ async def show_delete_source_picker(
     if not sources:
         await callback.answer("لا توجد مصادر لديها أخبار منشورة.", show_alert=True)
         return
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "🗑 اختر المصدر الذي تريد حذف أخباره:",
-        reply_markup=delete_source_picker_keyboard(sources, callback_data.page, total),
+        delete_source_picker_keyboard(sources, callback_data.page, total),
     )
     await callback.answer()
 
@@ -163,11 +184,10 @@ async def show_delete_source_picker(
 async def preview_delete_scope(callback: CallbackQuery, callback_data: DeleteScope) -> None:
     async with get_session() as session:
         items = await get_deletable_items(session, callback_data.scope)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         _format_preview(callback_data.scope, items),
-        reply_markup=(
-            delete_confirm_keyboard(callback_data.scope) if items else back_to_menu_keyboard()
-        ),
+        delete_confirm_keyboard(callback_data.scope) if items else back_to_menu_keyboard(),
     )
     await callback.answer()
 
@@ -178,9 +198,10 @@ async def preview_delete_source(
 ) -> None:
     async with get_session() as session:
         items = await get_deletable_items(session, "source", source_id=callback_data.source_id)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         _format_preview("source", items),
-        reply_markup=(
+        (
             delete_confirm_keyboard("source", callback_data.source_id)
             if items
             else back_to_menu_keyboard()
@@ -193,7 +214,13 @@ def _format_preview(scope: str, items: list[NewsItem]) -> str:
     label = _SCOPE_LABELS.get(scope, scope)
     if not items:
         return f"🗑 <b>{label}</b>\n\nلا توجد رسائل مطابقة لهذا النطاق."
-    sample_titles = "\n".join(f"{i + 1}. {item.title[:70]}" for i, item in enumerate(items[:5]))
+    # Scraped titles are untrusted as far as Telegram's HTML parse mode is
+    # concerned — an unescaped "<" or "&" makes the whole edit_text call
+    # fail with "can't parse entities" (same class of bug as publisher.py's
+    # _format_message, just reached from the admin panel instead).
+    sample_titles = "\n".join(
+        f"{i + 1}. {escape_html(item.title[:70])}" for i, item in enumerate(items[:5])
+    )
     more = f"\n… و{len(items) - 5} أخرى" if len(items) > 5 else ""
     return (
         f"🗑 <b>{label}</b>\n\n"
@@ -205,9 +232,8 @@ def _format_preview(scope: str, items: list[NewsItem]) -> str:
 
 @router.callback_query(DeleteConfirm.filter(F.confirm.is_(False)))
 async def cancel_delete(callback: CallbackQuery) -> None:
-    await callback.message.edit_text(
-        "🗑 <b>حذف أخبار من القناة</b>\n\nاختر نطاق الحذف:",
-        reply_markup=delete_scope_keyboard(),
+    await safe_edit_text(
+        callback, "🗑 <b>حذف أخبار من القناة</b>\n\nاختر نطاق الحذف:", delete_scope_keyboard()
     )
     await callback.answer("تم الإلغاء")
 
@@ -229,7 +255,7 @@ async def confirm_delete(callback: CallbackQuery, callback_data: DeleteConfirm) 
         f"✅ تم حذف: {deleted}\n"
         f"❌ فشل الحذف: {failed}"
     )
-    await callback.message.edit_text(result_text, reply_markup=back_to_menu_keyboard())
+    await safe_edit_text(callback, result_text, back_to_menu_keyboard())
 
 
 async def _delete_items(
