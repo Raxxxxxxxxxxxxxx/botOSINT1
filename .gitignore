@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Runtime data (SQLite db, Telethon session, logs)
+data/*.db
+data/*.session
+data/telethon_session*
+logs/*.log
+logs/*.log.zip
+
+# Keep the directories themselves under version control
+!data/.gitkeep
+!logs/.gitkeep
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
