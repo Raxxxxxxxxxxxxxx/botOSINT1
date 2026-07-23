@@ -1,0 +1,8 @@
+[33mcommit 89c34cc511aa4ad0d9b2b38fe16b059a83b15031[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: 77hamed77 <h55180d@gmail.com>
+Date:   Thu Jul 23 04:49:50 2026 +0300
+
+    m2
+
+ scripts/make_telethon_session.py | 38 [32m++++++++++++++++++++++++++++++++++++++[m
+ 1 file changed, 38 insertions(+)
