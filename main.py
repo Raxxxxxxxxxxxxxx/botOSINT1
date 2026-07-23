@@ -14,7 +14,7 @@ from loguru import logger
 
 from config.settings import get_settings
 from database.engine import dispose_engine
-from database.seed import seed_sources
+from database.seed import apply_configured_selectors, seed_sources
 from scrapers.base import SourceAdapter
 from services.pipeline import NewsPipeline
 from services.publisher import PublishQueue
@@ -59,9 +59,10 @@ async def main() -> None:
     logger.info("Starting Raqqa news bot")
 
     # Also ensures the curated seed sources (Facebook, disabled HTML/RSS
-    # placeholders) exist; safe on every boot since it skips URLs already
-    # present rather than duplicating rows.
+    # placeholders) exist, and applies any verified CSS selectors on top of
+    # them; safe on every boot since both skip rows that already match.
     await seed_sources()
+    await apply_configured_selectors()
 
     bot = create_bot(settings)
     dispatcher = create_dispatcher()

@@ -282,5 +282,57 @@ async def seed_sources() -> None:
         )
 
 
+# CSS selectors verified by fetching each site's live HTML and inspecting its
+# actual article-listing markup (see html_adapter.py for how list_selector is
+# used). Enabling a source is just filling in its entry here — no scraper
+# code changes needed. Sites confirmed to sit behind a JS/Cloudflare bot
+# challenge (no selector can fix that — the HTML adapter does a plain HTTP
+# GET, no headless browser, per the Phase-2 resource-budget decision) are
+# deliberately left out and stay disabled: North Press Agency (npasyria.com),
+# هذا اليوم (hathalyoum.net), تلفزيون سوريا (syria.tv), راصد (rasid.com — this
+# one is actually a parked-domain redirect, not a real news site anymore).
+_CONFIGURED_SELECTORS: dict[str, dict[str, object]] = {
+    "https://7al.net/": {"list_selector": "a.card", "enabled": True},
+    "https://deirezzor24.net/": {"list_selector": ".jeg_post_title", "enabled": True},
+    "https://sana.sy/governorates/alrakkah/": {"list_selector": ".entry-title", "enabled": True},
+    "https://english.enabbaladi.net/": {"list_selector": ".one-post", "enabled": True},
+    "https://syria.news/": {"list_selector": ".search-title", "enabled": True},
+    "https://alikhbariah.com/news_location/%D8%A7%D9%84%D8%B1%D9%82%D8%A9/": {
+        "list_selector": "article",
+        "enabled": True,
+    },
+}
+
+
+async def apply_configured_selectors() -> None:
+    """Apply verified `list_selector`/`enabled` settings to existing sources.
+
+    Safe to call on every startup: only touches rows whose current value
+    differs from the configured one, so re-running is a no-op once applied.
+    """
+    async with get_session() as session:
+        updated = 0
+        for url, config in _CONFIGURED_SELECTORS.items():
+            result = await session.execute(select(Source).where(Source.url == url))
+            source = result.scalar_one_or_none()
+            if source is None:
+                continue
+            changed = False
+            for field, value in config.items():
+                if getattr(source, field) != value:
+                    setattr(source, field, value)
+                    changed = True
+            if changed:
+                updated += 1
+        await session.commit()
+        if updated:
+            logger.info("Applied verified selectors to {} source(s)", updated)
+
+
+async def _seed_and_configure() -> None:
+    await seed_sources()
+    await apply_configured_selectors()
+
+
 if __name__ == "__main__":
-    asyncio.run(seed_sources())
+    asyncio.run(_seed_and_configure())
