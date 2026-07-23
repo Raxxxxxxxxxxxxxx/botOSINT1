@@ -23,6 +23,7 @@ from database.engine import get_session
 from models.enums import SourceType
 from models.source import Source
 from scrapers.base import SourceAdapter
+from scrapers.facebook_adapter import FacebookPostsAdapter
 from scrapers.html_adapter import HTMLSourceAdapter
 from scrapers.rss_adapter import RSSSourceAdapter
 from services.pipeline import NewsPipeline
@@ -47,6 +48,7 @@ class SourceScheduler:
         self._adapters: dict[SourceType, SourceAdapter] = {
             SourceType.RSS: RSSSourceAdapter(http_session),
             SourceType.HTML: HTMLSourceAdapter(http_session),
+            SourceType.FACEBOOK: FacebookPostsAdapter(http_session),
         }
         if telegram_adapter is not None:
             self._adapters[SourceType.TELEGRAM] = telegram_adapter

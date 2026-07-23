@@ -30,7 +30,13 @@ def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
         settings = get_settings()
-        _engine = create_async_engine(settings.database_url, echo=False, future=True)
+        _engine = create_async_engine(
+            settings.database_url,
+            echo=False,
+            future=True,
+            pool_pre_ping=True,
+            pool_recycle=300,
+        )
     return _engine
 
 

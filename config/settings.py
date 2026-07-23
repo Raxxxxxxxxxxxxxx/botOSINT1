@@ -113,6 +113,23 @@ class Settings:
     )
     ai_model: str = field(default_factory=lambda: os.getenv("AI_MODEL", "gpt-4o-mini"))
 
+    # --- Facebook Page posts (via Apify actor; optional, per-source opt-in) ---
+    apify_api_token: str | None = field(default_factory=lambda: os.getenv("APIFY_API_TOKEN") or None)
+    apify_facebook_actor_id: str = field(
+        default_factory=lambda: os.getenv(
+            "APIFY_FACEBOOK_ACTOR_ID", "apify~facebook-posts-scraper"
+        )
+    )
+    apify_facebook_results_limit: int = field(
+        default_factory=lambda: _get_int("APIFY_FACEBOOK_RESULTS_LIMIT", 20)
+    )
+    apify_facebook_initial_lookback_days: int = field(
+        default_factory=lambda: _get_int("APIFY_FACEBOOK_INITIAL_LOOKBACK_DAYS", 3)
+    )
+    apify_run_timeout_seconds: float = field(
+        default_factory=lambda: _get_float("APIFY_RUN_TIMEOUT_SECONDS", 320.0)
+    )
+
     # --- Optional Telegram-channel monitoring (Telethon userbot) ---
     telethon_enabled: bool = field(
         default_factory=lambda: _get_bool("TELETHON_ENABLED", False)
