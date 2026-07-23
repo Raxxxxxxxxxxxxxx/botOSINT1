@@ -22,7 +22,10 @@ RAQQA_KEYWORDS: list[str] = [
     "الرقة",
     "محافظة الرقة",
     "الطبقة",
-    "الثورة",  # historical alternate name for Tabqa
+    # "الثورة" (Tabqa's historical alternate name) deliberately excluded:
+    # it's also the generic Arabic word for "revolution", so fuzzy-matching
+    # it false-positived on unrelated articles (e.g. Egypt's July 23
+    # revolution anniversary) that have nothing to do with Raqqa.
     "تل أبيض",
     "عين عيسى",
     "معدان",

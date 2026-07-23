@@ -21,6 +21,7 @@ from sqlalchemy import select
 from config.settings import Settings
 from database.engine import get_session
 from models.enums import SourceType
+from models.news_item import NewsItem
 from models.source import Source
 from scrapers.base import SourceAdapter
 from scrapers.facebook_adapter import FacebookPostsAdapter
@@ -105,7 +106,12 @@ class SourceScheduler:
                 await session.commit()
                 return
 
-            accepted = await self._pipeline.process_batch(session, source, raw_items)
+            is_first_poll = source.last_success_at is None
+            if is_first_poll:
+                await self._pipeline.prime_baseline(session, source, raw_items)
+                accepted: list[NewsItem] = []
+            else:
+                accepted = await self._pipeline.process_batch(session, source, raw_items)
             self._record_success(source)
             await session.commit()
 

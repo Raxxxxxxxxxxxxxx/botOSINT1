@@ -47,6 +47,44 @@ class NewsPipeline:
             max_age_hours=self._settings.dedup_window_hours,
         )
 
+    async def prime_baseline(
+        self, session: AsyncSession, source: Source, raw_items: list[RawItem]
+    ) -> None:
+        """Record a newly-enabled source's current items as already-seen, unpublished.
+
+        Only called for a source's very first poll (``source.last_success_at
+        is None``). Without this, "have we seen this URL before" is
+        trivially false for everything on a freshly-enabled source's
+        current listing page — for a site with a deep archive (an HTML
+        listing has no date filter at all, unlike the Facebook adapter),
+        that means the entire backlog, however old, gets published in one
+        burst. Priming establishes a baseline silently instead: nothing
+        from this first poll is published, but every URL is recorded so
+        future polls only surface items that appear after it.
+        """
+        for raw in raw_items:
+            url_hash = hash_url(raw.url)
+            if await is_duplicate_url(session, url_hash):
+                continue
+            item = NewsItem(
+                source_id=source.id,
+                url=raw.url,
+                url_hash=url_hash,
+                title=raw.title,
+                normalized_title=normalize_arabic(raw.title),
+                content=None,
+                published_at=raw.published_at,
+                fetched_at=dt.datetime.now(dt.timezone.utc),
+                status=ItemStatus.REJECTED,
+                rejection_reason="baseline_priming",
+            )
+            session.add(item)
+        logger.info(
+            "Primed baseline for new source '{}': {} item(s) recorded, none published",
+            source.name,
+            len(raw_items),
+        )
+
     async def process_batch(
         self, session: AsyncSession, source: Source, raw_items: list[RawItem]
     ) -> list[NewsItem]:
