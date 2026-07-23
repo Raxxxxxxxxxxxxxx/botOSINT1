@@ -44,9 +44,11 @@ class NewsItem(Base):
     image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    published_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    published_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     fetched_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc), nullable=False
     )
 
     status: Mapped[ItemStatus] = mapped_column(
@@ -55,7 +57,7 @@ class NewsItem(Base):
     rejection_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc), nullable=False
     )
 
     source: Mapped[Source] = relationship(back_populates="items")

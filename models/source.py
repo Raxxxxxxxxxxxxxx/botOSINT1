@@ -64,12 +64,16 @@ class Source(Base):
 
     # Circuit breaker bookkeeping.
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    last_success_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    last_success_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_error: Mapped[str | None] = mapped_column(String(2048), nullable=True)
-    circuit_open_until: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    circuit_open_until: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=lambda: dt.datetime.now(dt.timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc), nullable=False
     )
 
     items: Mapped[list["NewsItem"]] = relationship(
