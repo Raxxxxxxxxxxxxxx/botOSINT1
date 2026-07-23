@@ -48,15 +48,20 @@ _SEED_SOURCES: list[tuple[str, str, SourceType]] = [
     ),
     # Broader Syrian/NE-Syria outlets added on user request (free — no
     # per-source cost like the Facebook/Apify sources below). Existence and
-    # reachability checked via HTTP request; several respected outlets
-    # (SOHR, North Press, Zaman Al Wasl, Orient Net, Kurdistan24, SDF Press,
-    # Al Arabiya, Al Modon, Rai Alyoum, Nedaa Post) return 403/406 to a bare
-    # curl request — almost certainly Cloudflare/WAF bot-blocking rather
-    # than the site being unreachable, so they're kept, disabled, same as
-    # the rest: selector setup requires visiting them in an actual browser
-    # anyway, and that may also reveal they need the HTML adapter's
-    # User-Agent tuned or that they're unscrapable this way — that's a
-    # per-source risk to confirm during selector setup, not before.
+    # reachability checked via HTTP request. Follow-up investigation (see
+    # _CONFIGURED_SELECTORS below) confirmed several of these sit behind a
+    # Cloudflare/Akamai bot challenge that a plain HTTP GET can never pass
+    # (Zaman Al Wasl, Orient Net, SOHR, Kurdistan24, SDF Press, Rai Alyoum,
+    # Al Modon, the Enab Baladi tag/category pages, العربي الجديد, The New
+    # Arab), and others render their article list client-side via JS so the
+    # raw HTML never contains real content (Anadolu, Rudaw, نبض Nabd) — both
+    # are architectural dead ends for this no-headless-browser adapter, not
+    # missing selectors. Four originally-listed entries turned out to be
+    # dead domains outright and were removed rather than left disabled:
+    # راصد/rasid.com and بلدي نيوز/baladi-news.com are parked-domain
+    # redirects (not real sites anymore), بوست الفرات/euphratespost.com is a
+    # JS bot-fingerprint redirect loop, and rojavainformationcenter.com has
+    # been taken over and now serves unrelated Indonesian spam content.
     ("North Press Agency (نورث برس)", "https://npasyria.com/", SourceType.HTML),
     ("North Press Agency English", "https://npasyria.com/en/", SourceType.HTML),
     ("Hawar News Agency (ANHA)", "https://hawarnews.com/ar", SourceType.HTML),
@@ -85,7 +90,6 @@ _SEED_SOURCES: list[tuple[str, str, SourceType]] = [
     ),
     ("Rozana روزنة", "https://www.rozana.fm/", SourceType.HTML),
     ("Athr Press أثر برس", "https://athrpress.com/", SourceType.HTML),
-    ("Rased راصد", "https://rasid.com/", SourceType.HTML),
     ("Sound and Picture صوت وصورة", "https://sound-and-picture.com/", SourceType.HTML),
     ("Al Arabiya - Syria", "https://www.alarabiya.net/syria", SourceType.HTML),
     ("Al Jazeera Arabic - Syria", "https://www.aljazeera.net/where/syria/", SourceType.HTML),
@@ -101,9 +105,6 @@ _SEED_SOURCES: list[tuple[str, str, SourceType]] = [
     ("SDF Press", "https://sdf-press.com/", SourceType.HTML),
     ("Kurdistan24 Arabic", "https://www.kurdistan24.net/ar", SourceType.HTML),
     ("Al Modon المدن", "https://www.almodon.com/", SourceType.HTML),
-    ("Baladi News بلدي نيوز", "https://baladi-news.com/", SourceType.HTML),
-    ("Euphrates Post بوست الفرات", "https://euphratespost.com/", SourceType.HTML),
-    ("Rojava Information Center", "https://rojavainformationcenter.com/", SourceType.HTML),
     ("Shaam Network شبكة شام", "https://www.shaam.org/", SourceType.HTML),
     ("Suwar Magazine سوّر", "https://suwar-magazine.org/", SourceType.HTML),
     ("Watan FM وطن اف ام", "https://www.watanfm.com/", SourceType.HTML),
@@ -285,22 +286,48 @@ async def seed_sources() -> None:
 # CSS selectors verified by fetching each site's live HTML and inspecting its
 # actual article-listing markup (see html_adapter.py for how list_selector is
 # used). Enabling a source is just filling in its entry here — no scraper
-# code changes needed. Sites confirmed to sit behind a JS/Cloudflare bot
-# challenge (no selector can fix that — the HTML adapter does a plain HTTP
-# GET, no headless browser, per the Phase-2 resource-budget decision) are
-# deliberately left out and stay disabled: North Press Agency (npasyria.com),
-# هذا اليوم (hathalyoum.net), تلفزيون سوريا (syria.tv), راصد (rasid.com — this
-# one is actually a parked-domain redirect, not a real news site anymore).
+# code changes needed. Sites confirmed to sit behind a JS/Cloudflare/Akamai
+# bot challenge, or that render their listing client-side via JS (no selector
+# can fix either — the HTML adapter does a plain HTTP GET, no headless
+# browser, per the Phase-2 resource-budget decision), are deliberately left
+# out and stay disabled: North Press Agency (npasyria.com), هذا اليوم
+# (hathalyoum.net), تلفزيون سوريا (syria.tv), زمان الوصل (both editions),
+# Orient Net, SOHR, Kurdistan24, SDF Press, رأي اليوم, المدن, العربي الجديد,
+# The New Arab, the Enab Baladi tag/category pages, Anadolu, Rudaw (both
+# editions), نبض/Nabd. رويانا (Rozana), العربية (Al Arabiya), الوطن سوريا,
+# and سبوتنيك عربي fetched real HTML but didn't yield an obvious selector on
+# a first pass — worth a second look, not confirmed dead ends.
 _CONFIGURED_SELECTORS: dict[str, dict[str, object]] = {
     "https://7al.net/": {"list_selector": "a.card", "enabled": True},
     "https://deirezzor24.net/": {"list_selector": ".jeg_post_title", "enabled": True},
+    "https://deirezzor24.net/en/": {"list_selector": ".jeg_post_title", "enabled": True},
     "https://sana.sy/governorates/alrakkah/": {"list_selector": ".entry-title", "enabled": True},
+    "https://sana.sy/en/": {"list_selector": ".p-url", "enabled": True},
     "https://english.enabbaladi.net/": {"list_selector": ".one-post", "enabled": True},
     "https://syria.news/": {"list_selector": ".search-title", "enabled": True},
     "https://alikhbariah.com/news_location/%D8%A7%D9%84%D8%B1%D9%82%D8%A9/": {
         "list_selector": "article",
         "enabled": True,
     },
+    "https://hawarnews.com/ar": {"list_selector": ".post", "enabled": True},
+    "https://syriadirect.org/ar/": {"list_selector": ".fusion-post-wrapper", "enabled": True},
+    "https://suwar-magazine.org/": {"list_selector": ".rowTemplateTitle", "enabled": True},
+    "https://eqtsad.net/": {"list_selector": ".post-wrapper", "enabled": True},
+    "https://www.youm7.com/Section/%D8%B3%D9%88%D8%B1%D9%8A%D8%A7/319/1": {
+        "list_selector": ".bigOneSec",
+        "enabled": True,
+    },
+    "https://nedaa-post.com/": {"list_selector": ".post-content", "enabled": True},
+    "https://www.aljazeera.net/where/syria/": {
+        "list_selector": "a.article-card__link",
+        "enabled": True,
+    },
+    "https://www.aljazeera.com/where/syria/": {
+        "list_selector": "a.article-card__link",
+        "enabled": True,
+    },
+    "https://shafaq.com/ar": {"list_selector": "a.article-item", "enabled": True},
+    "https://www.shaam.org/": {"list_selector": ".hero-item", "enabled": True},
 }
 
 
