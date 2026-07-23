@@ -44,6 +44,46 @@ def _add_missing_columns(conn: Connection) -> None:
         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
         logger.info("Added missing column {}.{}", table, column)
 
+
+# (Postgres enum type name, value) for enum members added to a Python enum
+# *after* Postgres already created a native enum type from it. Unlike SQLite
+# (enums are just VARCHAR there), Postgres bakes the allowed values into a
+# real type at CREATE TYPE time — `create_all` never alters an existing
+# type, so `ItemStatus.DELETED` (added for the admin panel) needs its own
+# explicit `ALTER TYPE ... ADD VALUE` here, or every query touching it fails
+# with "invalid input value for enum itemstatus" (confirmed in production).
+_NEW_ENUM_VALUES: list[tuple[str, str]] = [
+    ("itemstatus", "DELETED"),
+]
+
+
+async def _add_missing_enum_values() -> None:
+    """Add new enum labels to already-existing Postgres enum types.
+
+    `ALTER TYPE ... ADD VALUE` cannot run inside a multi-statement
+    transaction, so this runs on its own autocommit connection rather than
+    inside init_db()'s `engine.begin()` block. No-op on SQLite.
+    """
+    engine = get_engine()
+    if engine.dialect.name != "postgresql":
+        return
+
+    autocommit_engine = engine.execution_options(isolation_level="AUTOCOMMIT")
+    async with autocommit_engine.connect() as conn:
+        for enum_name, value in _NEW_ENUM_VALUES:
+            exists = await conn.scalar(
+                text(
+                    "SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid "
+                    "WHERE t.typname = :enum_name AND e.enumlabel = :value"
+                ),
+                {"enum_name": enum_name, "value": value},
+            )
+            if exists:
+                continue
+            await conn.execute(text(f"ALTER TYPE {enum_name} ADD VALUE '{value}'"))
+            logger.info("Added enum value '{}' to Postgres type '{}'", value, enum_name)
+
+
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
@@ -103,6 +143,7 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_add_missing_columns)
+    await _add_missing_enum_values()
 
 
 async def dispose_engine() -> None:
