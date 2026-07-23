@@ -56,6 +56,11 @@ class NewsItem(Base):
     )
     rejection_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Set once the publish queue actually sends this item, so the admin panel
+    # can delete the corresponding channel message later. Nullable because
+    # every non-PUBLISHED item never gets one.
+    telegram_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc), nullable=False
     )

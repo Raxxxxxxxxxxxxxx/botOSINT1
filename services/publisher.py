@@ -18,6 +18,8 @@ from loguru import logger
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from config.settings import get_settings
+from database.engine import get_session
+from models.enums import ItemStatus
 from models.news_item import NewsItem
 
 _PARSE_MODE = "HTML"
@@ -69,15 +71,27 @@ class PublishQueue:
         text = _format_message(item)
         try:
             if item.image_url:
-                await self._bot.send_photo(
+                message = await self._bot.send_photo(
                     self._chat_id, item.image_url, caption=text, parse_mode=_PARSE_MODE
                 )
             else:
-                await self._bot.send_message(self._chat_id, text, parse_mode=_PARSE_MODE)
+                message = await self._bot.send_message(
+                    self._chat_id, text, parse_mode=_PARSE_MODE
+                )
         except TelegramRetryAfter as exc:
             logger.warning("Hit Telegram flood control; sleeping {}s", exc.retry_after)
             await asyncio.sleep(exc.retry_after)
             raise
+        else:
+            # Recorded so the admin panel can later delete this exact channel
+            # message; item is detached from the session that created it, so
+            # this is a fresh, short-lived update by primary key.
+            async with get_session() as session:
+                db_item = await session.get(NewsItem, item.id)
+                if db_item is not None:
+                    db_item.status = ItemStatus.PUBLISHED
+                    db_item.telegram_message_id = message.message_id
+                    await session.commit()
 
 
 def _format_message(item: NewsItem) -> str:

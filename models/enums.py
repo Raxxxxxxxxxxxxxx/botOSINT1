@@ -26,3 +26,4 @@ class ItemStatus(str, enum.Enum):
     PUBLISHED = "published"
     REJECTED = "rejected"
     FAILED = "failed"
+    DELETED = "deleted"  # published, then removed from the channel via the admin panel

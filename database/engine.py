@@ -11,6 +11,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
+from loguru import logger
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -20,6 +23,26 @@ from sqlalchemy.ext.asyncio import (
 
 from config.settings import get_settings
 from database.base import Base
+
+# (table, column, DDL type) for columns added to models *after* the table
+# already existed in a deployed database. `create_all` only creates missing
+# tables, never alters existing ones, so a column added to an ORM model
+# needs an explicit, idempotent `ALTER TABLE` here instead of a full
+# migration tool — deliberately kept to this one tiny mechanism rather than
+# introducing Alembic, consistent with the project's no-migration-tool scale.
+_NEW_COLUMNS: list[tuple[str, str, str]] = [
+    ("news_items", "telegram_message_id", "INTEGER"),
+]
+
+
+def _add_missing_columns(conn: Connection) -> None:
+    inspector = inspect(conn)
+    for table, column, ddl_type in _NEW_COLUMNS:
+        existing = {col["name"] for col in inspector.get_columns(table)}
+        if column in existing:
+            continue
+        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+        logger.info("Added missing column {}.{}", table, column)
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -79,6 +102,7 @@ async def init_db() -> None:
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_missing_columns)
 
 
 async def dispose_engine() -> None:

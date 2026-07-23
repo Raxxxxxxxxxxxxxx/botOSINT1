@@ -48,6 +48,10 @@ class Settings:
     bot_token: str = field(default_factory=lambda: os.getenv("BOT_TOKEN", ""))
     target_chat_id: str = field(default_factory=lambda: os.getenv("TARGET_CHAT_ID", ""))
 
+    # --- Admin panel (optional; the bot's owner only) ---
+    # 0 (unset) means the admin panel denies everyone — fail closed, not open.
+    admin_id: int = field(default_factory=lambda: _get_int("ADMIN_ID", 0))
+
     # --- Database ---
     database_url: str = field(
         default_factory=lambda: os.getenv(
