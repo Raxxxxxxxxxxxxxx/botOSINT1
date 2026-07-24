@@ -94,7 +94,15 @@ class SourceScheduler:
         )
 
     async def _poll_source(self, source_id: int) -> None:
-        """One poll cycle for a single source: fetch -> pipeline -> publish."""
+        """One poll cycle for a single source: fetch -> pipeline -> publish.
+
+        The network fetch deliberately runs with no DB session held open.
+        Adapters can take seconds (a slow site) to tens of seconds (a
+        Selenium poll queued behind the shared browser lock), and with 120+
+        sources on short intervals, polls land in bursts; holding a pooled
+        connection idle for a fetch's whole duration was enough to exhaust
+        the pool and time out unrelated sources' polls in production.
+        """
         async with get_session() as session:
             source = await session.get(Source, source_id)
             if source is None or not source.enabled:
@@ -109,13 +117,17 @@ class SourceScheduler:
                 logger.warning("No adapter registered for source type '{}'", source.type.value)
                 return
 
-            try:
-                raw_items = await adapter.fetch(source)
-            except Exception as exc:  # noqa: BLE001 - isolate this source's failure from others
+        try:
+            raw_items = await adapter.fetch(source)
+        except Exception as exc:  # noqa: BLE001 - isolate this source's failure from others
+            async with get_session() as session:
+                source = await session.merge(source)
                 self._record_failure(source, exc)
                 await session.commit()
-                return
+            return
 
+        async with get_session() as session:
+            source = await session.merge(source)
             is_first_poll = source.last_success_at is None
             if is_first_poll:
                 await self._pipeline.prime_baseline(session, source, raw_items)
@@ -125,8 +137,8 @@ class SourceScheduler:
             self._record_success(source)
             await session.commit()
 
-            for item in accepted:
-                await self._publish_queue.enqueue(item)
+        for item in accepted:
+            await self._publish_queue.enqueue(item)
 
     def _is_circuit_open(self, source: Source) -> bool:
         """True if the source is in cooldown and should be skipped this tick."""

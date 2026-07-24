@@ -58,6 +58,13 @@ class Settings:
             "DATABASE_URL", "sqlite+aiosqlite:///./data/bot.db"
         )
     )
+    # Pool sizing matters at this project's scale: 120+ sources on short
+    # poll intervals mean bursts of concurrent `_poll_source` runs (jitter
+    # clustering, or every job catching up together after a restart). The
+    # SQLAlchemy defaults (5 + 10 overflow = 15 total) were observed
+    # exhausted in production, timing out unrelated polls for 30s each.
+    db_pool_size: int = field(default_factory=lambda: _get_int("DB_POOL_SIZE", 20))
+    db_max_overflow: int = field(default_factory=lambda: _get_int("DB_MAX_OVERFLOW", 20))
 
     # --- Logging ---
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
