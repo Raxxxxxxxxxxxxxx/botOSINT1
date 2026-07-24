@@ -44,6 +44,14 @@ class NewsItem(Base):
     image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # Structured fields for the published bulletin template (see
+    # services.summarizer.analyze / services.publisher._format_message).
+    # AI-extracted per item, with a rule-based fallback when AI is
+    # disabled/fails, so the template always has a value to show.
+    classification: Mapped[str | None] = mapped_column(String(32), nullable=True)  # صنف الخبر
+    news_type: Mapped[str | None] = mapped_column(String(32), nullable=True)  # نوع الخبر
+    importance: Mapped[str | None] = mapped_column(String(16), nullable=True)  # اهمية الخبر
+
     published_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

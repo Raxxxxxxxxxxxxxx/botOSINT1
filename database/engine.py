@@ -32,6 +32,11 @@ from database.base import Base
 # introducing Alembic, consistent with the project's no-migration-tool scale.
 _NEW_COLUMNS: list[tuple[str, str, str]] = [
     ("news_items", "telegram_message_id", "INTEGER"),
+    ("news_items", "classification", "VARCHAR(32)"),
+    ("news_items", "news_type", "VARCHAR(32)"),
+    ("news_items", "importance", "VARCHAR(16)"),
+    ("sources", "display_name", "VARCHAR(255)"),
+    ("sources", "default_location", "VARCHAR(255)"),
 ]
 
 

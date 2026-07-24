@@ -49,6 +49,14 @@ class Source(Base):
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=600, nullable=False)
 
+    # Bulletin-template display fields (see services/publisher._format_message).
+    # `name` is often a raw Facebook handle/profile id (e.g. "kalid21"), not
+    # something presentable as "مصدر الخبر" — these are set manually per
+    # source instead of being derived. Both optional: unset sources fall
+    # back to `name` / the governorate name respectively.
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    default_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     # HTTP/content caching (Phase-1 finding: ETag/Last-Modified avoid wasted
     # bandwidth and reduce the risk of being blocked by the source site).
     etag: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -3,6 +3,6 @@
 from services.pipeline import NewsPipeline
 from services.publisher import PublishQueue
 from services.scheduler import SourceScheduler
-from services.summarizer import summarize
+from services.summarizer import analyze
 
-__all__ = ["NewsPipeline", "PublishQueue", "SourceScheduler", "summarize"]
+__all__ = ["NewsPipeline", "PublishQueue", "SourceScheduler", "analyze"]

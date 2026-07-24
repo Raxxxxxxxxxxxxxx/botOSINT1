@@ -11,6 +11,7 @@ source-processing tasks racing to send independently.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 from html import escape as escape_html
 
 from aiogram import Bot
@@ -20,10 +21,38 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fi
 
 from config.settings import get_settings
 from database.engine import get_session
-from models.enums import ItemStatus
+from models.enums import ItemStatus, SourceType
 from models.news_item import NewsItem
+from models.source import Source
 
 _PARSE_MODE = "HTML"
+_TELEGRAM_CAPTION_LIMIT = 1024
+
+try:
+    from zoneinfo import ZoneInfo
+
+    _LOCAL_TZ: dt.tzinfo = ZoneInfo("Asia/Damascus")
+except Exception:  # pragma: no cover - missing tzdata on a minimal system image
+    _LOCAL_TZ = dt.timezone(dt.timedelta(hours=3))
+
+_GOVERNORATE = "الرقة"
+_OPEN_SOURCE_LABEL = "مصادر مفتوحة"
+_DEFAULT_CLASSIFICATION = "عام"
+_DEFAULT_NEWS_TYPE = "إخباري"
+_DEFAULT_IMPORTANCE = "عادي"
+
+# اليوم: Python's `weekday()` is Monday=0..Sunday=6, matched 1:1 here.
+_ARABIC_WEEKDAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
+
+_PLATFORM_LABELS = {
+    SourceType.FACEBOOK: "فيسبوك",
+    SourceType.FACEBOOK_SELENIUM: "فيسبوك",
+    SourceType.TELEGRAM: "تيليجرام",
+    SourceType.RSS: "موقع إلكتروني",
+    SourceType.HTML: "موقع إلكتروني",
+    SourceType.INSTAGRAM: "إنستغرام",
+    SourceType.TWITTER: "تويتر",
+}
 
 
 class PublishQueue:
@@ -69,9 +98,14 @@ class PublishQueue:
         reraise=True,
     )
     async def _send(self, item: NewsItem) -> None:
-        text = _format_message(item)
+        text = await _format_message(item)
         try:
-            if item.image_url:
+            # A photo caption longer than Telegram's 1024-char limit fails the
+            # send outright; the bulletin template runs well past the old
+            # short snippet, so fall back to a plain text message (still
+            # carrying the full report) rather than dropping the item after
+            # retries exhaust on an unfixable "caption too long" error.
+            if item.image_url and len(text) <= _TELEGRAM_CAPTION_LIMIT:
                 message = await self._bot.send_photo(
                     self._chat_id, item.image_url, caption=text, parse_mode=_PARSE_MODE
                 )
@@ -95,19 +129,71 @@ class PublishQueue:
                     await session.commit()
 
 
-def _format_message(item: NewsItem) -> str:
-    """Render a `NewsItem` as a Telegram HTML-formatted message.
+async def _format_message(item: NewsItem) -> str:
+    """Render a `NewsItem` as the required fielded bulletin template.
 
     Scraped title/summary text and article URLs (query strings routinely
     contain a bare `&`) are untrusted as far as Telegram's HTML parse mode
     is concerned — an unescaped `<`/`&` makes the whole `sendMessage` call
     fail with "can't parse entities", silently dropping the item after
-    exhausting retries.
+    exhausting retries. Every dynamic value below is escaped for that
+    reason, not because HTML tags are expected in it.
     """
-    lines = [f"📰 <b>{escape_html(item.title)}</b>"]
-    if item.summary:
-        lines.append(escape_html(item.summary))
-    if item.category:
-        lines.append(f"🏷 {escape_html(item.category)}")
-    lines.append(escape_html(item.url))
-    return "\n\n".join(lines)
+    source = await _load_source(item.source_id)
+
+    local_dt = _to_local(item.published_at or item.fetched_at)
+    location = (source.default_location if source else None) or _GOVERNORATE
+    outlet = (source.display_name if source else None) or (source.name if source else "")
+    platform = _PLATFORM_LABELS.get(source.type, "") if source else ""
+    details = item.summary or item.title
+
+    lines = [
+        f"المحافظة: {_GOVERNORATE}",
+        f"الموقع: {escape_html(location)}",
+        f"صنف الخبر: {escape_html(item.classification or _DEFAULT_CLASSIFICATION)}",
+        f"نوع الخبر: {escape_html(item.news_type or _DEFAULT_NEWS_TYPE)}",
+        f"اهمية الخبر: {escape_html(item.importance or _DEFAULT_IMPORTANCE)}",
+    ]
+    if outlet:
+        lines.append(f"مصدر الخبر: {escape_html(outlet)}")
+    lines.append(f"المنصة: {escape_html(platform)}")
+    lines.append(f"تاريخ الخبر: {local_dt.day}/{local_dt.month}/{local_dt.year}")
+    lines.append(f"اليوم: {_ARABIC_WEEKDAYS[local_dt.weekday()]}")
+    lines.append(f"الوقت: {_format_time_of_day(local_dt)}")
+    lines.append(f"رابط المنشور: {escape_html(item.url)}")
+    lines.append(f"مصدر الخبر: {_OPEN_SOURCE_LABEL}")
+    lines.append("تفاصيل الخبر:")
+    lines.append(f"#{_GOVERNORATE}")
+    lines.append(escape_html(details))
+    return "\n".join(lines)
+
+
+async def _load_source(source_id: int) -> Source | None:
+    """Fetch the owning `Source` in its own short-lived session.
+
+    `item` is detached from the session that created it by the time this
+    runs (queued, then drained later by the publish worker), so the
+    `source` relationship can't be lazy-loaded off it directly.
+    """
+    async with get_session() as session:
+        return await session.get(Source, source_id)
+
+
+def _to_local(moment: dt.datetime) -> dt.datetime:
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.timezone.utc)
+    return moment.astimezone(_LOCAL_TZ)
+
+
+def _format_time_of_day(local_dt: dt.datetime) -> str:
+    hour = local_dt.hour
+    if hour < 12:
+        period = "صباحاً"
+    elif hour < 16:
+        period = "ظهراً"
+    elif hour < 19:
+        period = "عصراً"
+    else:
+        period = "مساءً"
+    hour_12 = hour % 12 or 12
+    return f"الساعة {hour_12}:{local_dt.minute:02d} {period}"

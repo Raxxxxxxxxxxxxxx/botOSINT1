@@ -25,7 +25,7 @@ from models.enums import ItemStatus
 from models.news_item import NewsItem
 from models.source import Source
 from scrapers.base import RawItem
-from services.summarizer import summarize
+from services.summarizer import analyze
 from utils.hashing import hash_url
 
 
@@ -132,12 +132,14 @@ class NewsPipeline:
         category = categorize(combined_text)
 
         # Enrichment is best-effort: a failure here must never drop the item.
-        summary: str | None = None
-        if raw.content:
-            try:
-                summary = await summarize(raw.content, self._http)
-            except Exception as exc:  # noqa: BLE001 - graceful degradation, not a hard failure
-                logger.warning("Summarization failed for {}: {}", raw.url, exc)
+        # Runs even for content-less (title-only) items — the bulletin
+        # template's classification/type/importance fields need a value
+        # regardless of whether a full article body was scraped.
+        analysis = None
+        try:
+            analysis = await analyze(raw.content or raw.title, self._http)
+        except Exception as exc:  # noqa: BLE001 - graceful degradation, not a hard failure
+            logger.warning("Analysis failed for {}: {}", raw.url, exc)
 
         item = NewsItem(
             source_id=source.id,
@@ -146,9 +148,12 @@ class NewsPipeline:
             title=raw.title,
             normalized_title=normalized_title,
             content=raw.content,
-            summary=summary,
+            summary=analysis.summary if analysis else None,
             image_url=raw.image_url,
             category=category,
+            classification=analysis.classification if analysis else None,
+            news_type=analysis.news_type if analysis else None,
+            importance=analysis.importance if analysis else None,
             published_at=raw.published_at,
             fetched_at=dt.datetime.now(dt.timezone.utc),
             status=ItemStatus.PENDING,
