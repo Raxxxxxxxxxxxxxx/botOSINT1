@@ -54,6 +54,7 @@ def _add_missing_columns(conn: Connection) -> None:
 # with "invalid input value for enum itemstatus" (confirmed in production).
 _NEW_ENUM_VALUES: list[tuple[str, str]] = [
     ("itemstatus", "DELETED"),
+    ("sourcetype", "FACEBOOK_SELENIUM"),
 ]
 
 
