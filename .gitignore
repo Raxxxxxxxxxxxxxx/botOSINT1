@@ -15,6 +15,11 @@ data/telethon_session*
 logs/*.log
 logs/*.log.zip
 
+# Selenium experiment (scripts/selenium_facebook_experiment.py) — local only
+data/selenium_chrome_profile/
+data/selenium_facebook_experiment_*.json
+data/selenium_facebook_last_sent.json
+
 # Keep the directories themselves under version control
 !data/.gitkeep
 !logs/.gitkeep

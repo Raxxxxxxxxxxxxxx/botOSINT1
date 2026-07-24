@@ -14,7 +14,11 @@ from loguru import logger
 
 from config.settings import get_settings
 from database.engine import dispose_engine
-from database.seed import apply_configured_selectors, seed_sources
+from database.seed import (
+    apply_configured_selectors,
+    migrate_facebook_sources_to_selenium,
+    seed_sources,
+)
 from scrapers.base import SourceAdapter
 from services.pipeline import NewsPipeline
 from services.publisher import PublishQueue
@@ -63,6 +67,7 @@ async def main() -> None:
     # them; safe on every boot since both skip rows that already match.
     await seed_sources()
     await apply_configured_selectors()
+    await migrate_facebook_sources_to_selenium()
 
     bot = create_bot(settings)
     dispatcher = create_dispatcher()
@@ -87,6 +92,7 @@ async def main() -> None:
             await dispatcher.start_polling(bot)
         finally:
             scheduler.stop()
+            await scheduler.aclose_adapters()
             await publish_queue.stop()
             if telethon_client is not None:
                 await telethon_client.disconnect()

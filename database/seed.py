@@ -21,6 +21,7 @@ import asyncio
 from loguru import logger
 from sqlalchemy import select
 
+from config.settings import get_settings
 from database.engine import get_session, init_db
 from models.enums import SourceType
 from models.source import Source
@@ -134,6 +135,16 @@ _SEED_SOURCES: list[tuple[str, str, SourceType]] = [
 # frequency x source count regardless of dedup at the pipeline level).
 _FACEBOOK_POLL_INTERVAL_SECONDS = 900
 
+# Facebook Page posts via a local Selenium/Chrome browser instead of Apify —
+# free, but only viable now that the bot runs on self-hosted infrastructure
+# (see scrapers/facebook_selenium_adapter.py). All 90 sources share ONE
+# browser instance (serialized via an asyncio.Lock in the adapter), so a
+# full round of all of them takes ~15-20 minutes at ~10-15s/page regardless
+# of what poll_interval says — 1200s reflects that reality (user's explicit
+# choice over running several parallel browsers for a faster ~7-minute
+# round, which would cost ~1-1.5GB more RAM and hit the account harder).
+_FACEBOOK_SELENIUM_POLL_INTERVAL_SECONDS = 1200
+
 _FACEBOOK_SEED_SOURCES: list[tuple[str, str]] = [
     ("FB Profile 100078811247728", "https://www.facebook.com/profile.php?id=100078811247728"),
     ("mohamad.alothman.129", "https://www.facebook.com/mohamad.alothman.129"),
@@ -235,10 +246,17 @@ _FACEBOOK_SEED_SOURCES: list[tuple[str, str]] = [
     ("mansoura.mc", "https://www.facebook.com/mansoura.mc"),
 ]
 
+# All Facebook sources migrated from Apify to the free local-Selenium
+# adapter on 2026-07-24 (user's choice — see migrate_facebook_sources_to_selenium
+# below). Started as a first batch of 10 for validation, then expanded to
+# the full list once the adapter proved reliable.
+_SELENIUM_MIGRATED_URLS: frozenset[str] = frozenset(url for _, url in _FACEBOOK_SEED_SOURCES)
+
 
 async def seed_sources() -> None:
     """Insert the seed sources if they aren't already present (by URL)."""
     await init_db()
+    settings = get_settings()
     async with get_session() as session:
         inserted = 0
         for name, url, source_type in _SEED_SOURCES:
@@ -261,13 +279,18 @@ async def seed_sources() -> None:
             exists = await session.execute(select(Source.id).where(Source.url == url))
             if exists.scalar_one_or_none() is not None:
                 continue
+            via_selenium = settings.selenium_facebook_enabled and url in _SELENIUM_MIGRATED_URLS
             session.add(
                 Source(
                     name=name,
-                    type=SourceType.FACEBOOK,
+                    type=SourceType.FACEBOOK_SELENIUM if via_selenium else SourceType.FACEBOOK,
                     url=url,
                     enabled=True,
-                    poll_interval_seconds=_FACEBOOK_POLL_INTERVAL_SECONDS,
+                    poll_interval_seconds=(
+                        _FACEBOOK_SELENIUM_POLL_INTERVAL_SECONDS
+                        if via_selenium
+                        else _FACEBOOK_POLL_INTERVAL_SECONDS
+                    ),
                 )
             )
             fb_inserted += 1
@@ -366,9 +389,46 @@ async def apply_configured_selectors() -> None:
             logger.info("Applied verified selectors to {} source(s)", updated)
 
 
+async def migrate_facebook_sources_to_selenium() -> None:
+    """Reassign all migrated Facebook sources to the Selenium adapter.
+
+    `seed_sources()` only inserts rows that don't exist yet (matched by
+    URL), so it never touches a row that was already seeded under the old
+    `SourceType.FACEBOOK` (Apify). This does the reassignment for rows that
+    do already exist. Safe on every boot: only touches rows whose type or
+    poll interval differs from the target, so it's a no-op afterward.
+
+    Gated on `SELENIUM_FACEBOOK_ENABLED` (default false) so this never runs
+    on infrastructure that hasn't explicitly opted in — most importantly,
+    Railway, which this whole adapter was built to avoid running on.
+    """
+    if not get_settings().selenium_facebook_enabled:
+        return
+    async with get_session() as session:
+        updated = 0
+        for url in _SELENIUM_MIGRATED_URLS:
+            result = await session.execute(select(Source).where(Source.url == url))
+            source = result.scalar_one_or_none()
+            if source is None:
+                continue
+            changed = False
+            if source.type != SourceType.FACEBOOK_SELENIUM:
+                source.type = SourceType.FACEBOOK_SELENIUM
+                changed = True
+            if source.poll_interval_seconds != _FACEBOOK_SELENIUM_POLL_INTERVAL_SECONDS:
+                source.poll_interval_seconds = _FACEBOOK_SELENIUM_POLL_INTERVAL_SECONDS
+                changed = True
+            if changed:
+                updated += 1
+        await session.commit()
+        if updated:
+            logger.info("Migrated {} Facebook source(s) from Apify to Selenium", updated)
+
+
 async def _seed_and_configure() -> None:
     await seed_sources()
     await apply_configured_selectors()
+    await migrate_facebook_sources_to_selenium()
 
 
 if __name__ == "__main__":

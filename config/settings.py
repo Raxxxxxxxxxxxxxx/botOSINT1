@@ -134,6 +134,40 @@ class Settings:
         default_factory=lambda: _get_float("APIFY_RUN_TIMEOUT_SECONDS", 320.0)
     )
 
+    # --- Facebook Page posts via local Selenium/Chrome (optional, per-source opt-in) ---
+    # Only viable once self-hosted (see scrapers/facebook_selenium_adapter.py); a real
+    # Chrome/Chromium install and a one-time manual login into the profile dir below
+    # are required regardless of whether any FACEBOOK_SELENIUM source is enabled.
+    #
+    # Defaults to false deliberately: this code is deployed everywhere the repo is
+    # (including Railway, which is exactly the low-RAM environment this was built to
+    # avoid). With this off, the DB migration that reassigns Facebook sources to
+    # Selenium is skipped and the adapter is never registered, so a plain `git push`
+    # changes nothing in an environment that hasn't explicitly opted in. Only set
+    # true on infrastructure known to have Chrome/Chromium installed and enough RAM
+    # (~1-1.5GB+) for a real browser process — e.g. the self-hosted Ubuntu/Docker server.
+    selenium_facebook_enabled: bool = field(
+        default_factory=lambda: _get_bool("SELENIUM_FACEBOOK_ENABLED", False)
+    )
+    selenium_facebook_headless: bool = field(
+        default_factory=lambda: _get_bool("SELENIUM_FACEBOOK_HEADLESS", True)
+    )
+    selenium_facebook_max_posts: int = field(
+        default_factory=lambda: _get_int("SELENIUM_FACEBOOK_MAX_POSTS", 5)
+    )
+    selenium_chrome_profile_dir: str = field(
+        default_factory=lambda: os.getenv(
+            "SELENIUM_CHROME_PROFILE_DIR", "./data/selenium_chrome_profile"
+        )
+    )
+    # Only needed when the browser isn't at a location Selenium Manager finds on
+    # its own (e.g. Debian/Ubuntu's `chromium` package in Docker) — the provided
+    # Dockerfile sets this automatically. Leave empty for local development,
+    # where Selenium Manager finds an installed Chrome/Chromium by itself.
+    selenium_chrome_binary: str | None = field(
+        default_factory=lambda: os.getenv("SELENIUM_CHROME_BINARY") or None
+    )
+
     # --- Optional Telegram-channel monitoring (Telethon userbot) ---
     telethon_enabled: bool = field(
         default_factory=lambda: _get_bool("TELETHON_ENABLED", False)

@@ -1,0 +1,10 @@
+# selenium is now also a main requirements.txt dependency (the bot ships a
+# real FACEBOOK_SELENIUM adapter — scrapers/facebook_selenium_adapter.py).
+# This file just lets you run scripts/selenium_facebook_experiment.py on its
+# own, without installing the rest of the bot's dependencies.
+#
+# Install with: .venv/bin/pip install -r scripts/requirements-selenium.txt
+# Also requires Chrome or Chromium installed locally (Selenium Manager
+# auto-downloads a matching chromedriver, no separate driver install needed).
+
+selenium>=4.40,<5

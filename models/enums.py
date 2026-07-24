@@ -11,10 +11,14 @@ class SourceType(str, enum.Enum):
     RSS = "rss"
     HTML = "html"
     TELEGRAM = "telegram"
+    # Facebook Page posts via the Apify actor (metered, no local browser needed).
+    FACEBOOK = "facebook"
+    # Facebook Page posts via a local Selenium/Chrome browser (free, but only
+    # viable once self-hosted — see scrapers/facebook_selenium_adapter.py).
+    FACEBOOK_SELENIUM = "facebook_selenium"
     # Reserved for a future phase (Phase-1 research flagged these as legally/technically
     # fragile in 2026); not implemented by any adapter yet, kept here so adding them later
     # is a data migration, not an architecture change.
-    FACEBOOK = "facebook"
     INSTAGRAM = "instagram"
     TWITTER = "twitter"
 

@@ -25,6 +25,7 @@ from models.news_item import NewsItem
 from models.source import Source
 from scrapers.base import SourceAdapter
 from scrapers.facebook_adapter import FacebookPostsAdapter
+from scrapers.facebook_selenium_adapter import SeleniumFacebookAdapter
 from scrapers.html_adapter import HTMLSourceAdapter
 from scrapers.rss_adapter import RSSSourceAdapter
 from services.pipeline import NewsPipeline
@@ -51,6 +52,8 @@ class SourceScheduler:
             SourceType.HTML: HTMLSourceAdapter(http_session),
             SourceType.FACEBOOK: FacebookPostsAdapter(http_session),
         }
+        if settings.selenium_facebook_enabled:
+            self._adapters[SourceType.FACEBOOK_SELENIUM] = SeleniumFacebookAdapter()
         if telegram_adapter is not None:
             self._adapters[SourceType.TELEGRAM] = telegram_adapter
 
@@ -68,6 +71,13 @@ class SourceScheduler:
     def stop(self) -> None:
         """Shut down the scheduler without waiting for in-flight jobs."""
         self._scheduler.shutdown(wait=False)
+
+    async def aclose_adapters(self) -> None:
+        """Release any adapter-held resources (e.g. a live Selenium browser)."""
+        for adapter in self._adapters.values():
+            aclose = getattr(adapter, "aclose", None)
+            if aclose is not None:
+                await aclose()
 
     def _schedule_source(self, source: Source) -> None:
         trigger = IntervalTrigger(
