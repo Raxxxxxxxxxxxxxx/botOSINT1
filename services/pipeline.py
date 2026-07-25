@@ -14,9 +14,11 @@ import datetime as dt
 
 import aiohttp
 from loguru import logger
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import Settings, get_settings
+from database.engine import get_session
 from filters.arabic_normalize import normalize_arabic
 from filters.categorize import categorize
 from filters.dedup import RecentTitleWindow, is_duplicate_url
@@ -26,7 +28,7 @@ from models.news_item import NewsItem
 from models.source import Source
 from scrapers.base import RawItem
 from services.summarizer import analyze
-from utils.hashing import hash_url
+from utils.hashing import hash_url, normalize_url
 
 
 class NewsPipeline:
@@ -46,6 +48,39 @@ class NewsPipeline:
             max_items=self._settings.dedup_window_max_items,
             max_age_hours=self._settings.dedup_window_hours,
         )
+
+    async def load_recent_titles(self) -> None:
+        """Rebuild the Tier-2 dedup window from recent DB history on startup.
+
+        Without this, every restart silently drops the last
+        `dedup_window_hours` of "already seen" titles. In production this
+        let a repeatedly-scraped Facebook post — whose URL carries a
+        per-fetch tracking token, defeating Tier-1 URL dedup until
+        utils/hashing.py stripped it — slip past Tier-2 and get republished
+        the moment a routine deploy restart reset this window to empty,
+        right after it had correctly been catching the same post as a
+        near-duplicate for 8+ hours beforehand. Auto-deploy makes restarts
+        frequent enough that this is no longer a rare edge case.
+        """
+        cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+            hours=self._settings.dedup_window_hours
+        )
+        async with get_session() as session:
+            result = await session.execute(
+                select(NewsItem.created_at, NewsItem.normalized_title)
+                .where(
+                    NewsItem.status.in_([ItemStatus.PENDING, ItemStatus.PUBLISHED]),
+                    NewsItem.created_at >= cutoff,
+                )
+                .order_by(NewsItem.created_at.desc())
+                .limit(self._settings.dedup_window_max_items)
+            )
+            rows = list(result.all())
+        for created_at, normalized_title in reversed(rows):
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=dt.timezone.utc)
+            self._recent_titles.add(normalized_title, seen_at=created_at)
+        logger.info("Restored {} recent title(s) into the Tier-2 dedup window", len(rows))
 
     async def prime_baseline(
         self, session: AsyncSession, source: Source, raw_items: list[RawItem]
@@ -68,7 +103,7 @@ class NewsPipeline:
                 continue
             item = NewsItem(
                 source_id=source.id,
-                url=raw.url,
+                url=normalize_url(raw.url),
                 url_hash=url_hash,
                 title=raw.title,
                 normalized_title=normalize_arabic(raw.title),
@@ -143,7 +178,7 @@ class NewsPipeline:
 
         item = NewsItem(
             source_id=source.id,
-            url=raw.url,
+            url=normalize_url(raw.url),
             url_hash=url_hash,
             title=raw.title,
             normalized_title=normalized_title,
@@ -173,7 +208,7 @@ class NewsPipeline:
         """Persist a rejected item (for diagnosability) and signal "not accepted"."""
         item = NewsItem(
             source_id=source.id,
-            url=raw.url,
+            url=normalize_url(raw.url),
             url_hash=url_hash,
             title=raw.title,
             normalized_title=normalized_title,

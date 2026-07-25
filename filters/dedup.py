@@ -49,10 +49,13 @@ class RecentTitleWindow:
         while self._entries and self._entries[0][0] < cutoff:
             self._entries.popleft()
 
-    def add(self, normalized_title: str) -> None:
-        """Record a title as seen, timestamped now."""
+    def add(self, normalized_title: str, seen_at: dt.datetime | None = None) -> None:
+        """Record a title as seen. Defaults to now; pass `seen_at` when
+        restoring a historical entry (e.g. rebuilding the window from
+        persisted rows after a restart) so it isn't treated as fresher
+        than it actually is."""
         self._prune_expired()
-        self._entries.append((dt.datetime.now(dt.timezone.utc), normalized_title))
+        self._entries.append((seen_at or dt.datetime.now(dt.timezone.utc), normalized_title))
 
     def is_near_duplicate(self, normalized_title: str, threshold: int = 88) -> bool:
         """Return True if a sufficiently similar title was seen recently."""

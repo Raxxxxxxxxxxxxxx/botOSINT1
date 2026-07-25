@@ -7,8 +7,15 @@ from urllib.parse import urlsplit, urlunsplit
 
 # Tracking parameters that don't change the identity of an article — stripping
 # them means the same article shared with different UTM tags still hashes
-# to the same value.
-_TRACKING_PARAM_PREFIXES = ("utm_", "fbclid", "gclid", "ref", "spm")
+# to the same value. `__cft__`/`__tn__` are Facebook's own per-request
+# tracking tokens (regenerated on every fetch of the same permalink) —
+# without stripping these specifically, the same Facebook post hashes
+# differently every single time it's scraped, defeating URL-based dedup
+# entirely (confirmed in production: one repeatedly-scraped post was
+# rejected as a near-duplicate 15 times by the fuzzy-title fallback, then
+# published a second time the moment that in-memory fallback got reset by
+# a routine restart, since the URL hash never matched to begin with).
+_TRACKING_PARAM_PREFIXES = ("utm_", "fbclid", "gclid", "ref", "spm", "__cft__", "__tn__")
 
 
 def normalize_url(url: str) -> str:

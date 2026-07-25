@@ -76,6 +76,7 @@ async def main() -> None:
         telegram_adapter, telethon_client = await _build_telegram_adapter(http_session)
 
         pipeline = NewsPipeline(http_session, settings)
+        await pipeline.load_recent_titles()
         publish_queue = PublishQueue(bot, settings.target_chat_id)
         scheduler = SourceScheduler(
             http_session,
