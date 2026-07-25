@@ -113,22 +113,33 @@ def dismiss_dialogs(driver: webdriver.Chrome) -> None:
             continue
 
 
+_CONTINUE_WITH_FACEBOOK_XPATHS = [
+    "//button[contains(., 'Continue with Facebook')]",
+    "//div[@role='button'][contains(., 'Continue with Facebook')]",
+    "//button[contains(., 'متابعة') and contains(., 'فيسبوك')]",
+    "//div[@role='button'][contains(., 'متابعة') and contains(., 'فيسبوك')]",
+]
+
+
 def click_continue_with_facebook(driver: webdriver.Chrome) -> bool:
     """Instagram sometimes bridges login through an existing Facebook session in the
     same Chrome profile ("<Name>, continue with your Facebook account") instead of
     showing a username/password form. Clicking it logs into Instagram using that
-    linked identity — no separate credentials needed for this path at all."""
-    xpaths = [
-        "//button[contains(., 'Continue with Facebook')]",
-        "//div[@role='button'][contains(., 'Continue with Facebook')]",
-        "//button[contains(., 'متابعة') and contains(., 'فيسبوك')]",
-        "//div[@role='button'][contains(., 'متابعة') and contains(., 'فيسبوك')]",
-    ]
-    for xpath in xpaths:
+    linked identity — no separate credentials needed for this path at all.
+
+    Polls for a few seconds rather than checking once: this bridge screen is
+    injected client-side after the initial page load, so a single immediate
+    check can race it and miss a real click (observed directly — the dialog
+    was still on-screen in a screenshot after this function had already
+    returned False for that run).
+    """
+    for xpath in _CONTINUE_WITH_FACEBOOK_XPATHS:
         try:
-            driver.find_element(By.XPATH, xpath).click()
+            WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.XPATH, xpath))
+            ).click()
             return True
-        except Exception:  # noqa: BLE001 - this specific bridge screen isn't showing
+        except TimeoutException:
             continue
     return False
 
