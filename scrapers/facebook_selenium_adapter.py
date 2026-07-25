@@ -43,7 +43,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from config.settings import get_settings
 from models.source import Source
 from scrapers.base import RawItem, SourceAdapter
-from scrapers.selenium_browser import SeleniumBrowserManager
+from scrapers.selenium_browser import SeleniumBrowserManager, SessionLoggedOutError, is_logged_out
 
 POST_URL_MARKERS = ("/posts/", "/videos/", "/photos/", "story_fbid=", "/permalink/", "/reel/")
 
@@ -58,18 +58,16 @@ class SeleniumFacebookAdapter(SourceAdapter):
         return await self._browser.run(lambda driver: self._fetch_sync(driver, source.url))
 
     def _fetch_sync(self, driver: webdriver.Chrome, page_url: str) -> list[RawItem]:
+        driver.get(page_url)
+        _dismiss_cookie_banner(driver)
+        if is_logged_out(driver):
+            raise SessionLoggedOutError(f"Facebook fetch for {page_url} hit a login wall")
         try:
-            driver.get(page_url)
-            _dismiss_cookie_banner(driver)
             WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div[role='article']"))
             )
         except TimeoutException:
-            logger.warning(
-                "Selenium Facebook fetch for {} found no posts (login wall, empty page, "
-                "or Facebook served a checkpoint)",
-                page_url,
-            )
+            logger.warning("Selenium Facebook fetch for {} found no posts", page_url)
             return []
 
         settings = get_settings()

@@ -34,7 +34,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from config.settings import get_settings
 from models.source import Source
 from scrapers.base import RawItem, SourceAdapter
-from scrapers.selenium_browser import SeleniumBrowserManager
+from scrapers.selenium_browser import SeleniumBrowserManager, SessionLoggedOutError, is_logged_out
 
 # Instagram's og:description reads like:
 # 'N likes, M comments - username on Month Day, Year: "actual caption text"'
@@ -56,6 +56,8 @@ class SeleniumInstagramAdapter(SourceAdapter):
     def _fetch_sync(self, driver: webdriver.Chrome, profile_url: str) -> list[RawItem]:
         driver.get(profile_url)
         _dismiss_dialogs(driver)
+        if is_logged_out(driver):
+            raise SessionLoggedOutError(f"Instagram fetch for {profile_url} hit a login wall")
         try:
             WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located(

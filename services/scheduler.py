@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 
 import aiohttp
+from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from loguru import logger
@@ -44,6 +45,7 @@ class SourceScheduler:
         publish_queue: PublishQueue,
         settings: Settings,
         telegram_adapter: SourceAdapter | None = None,
+        bot: Bot | None = None,
     ) -> None:
         self._pipeline = pipeline
         self._publish_queue = publish_queue
@@ -58,8 +60,11 @@ class SourceScheduler:
         if settings.selenium_facebook_enabled:
             # One shared browser (and Chrome profile) behind every
             # `*_SELENIUM` adapter — see scrapers/selenium_browser.py for why
-            # this can't be a separate browser per platform.
-            self._selenium_browser = SeleniumBrowserManager()
+            # this can't be a separate browser per platform. `bot`/`admin_id`
+            # let it alert the admin once when the shared session gets
+            # logged out, instead of that going unnoticed for hours (as
+            # happened in production before this existed).
+            self._selenium_browser = SeleniumBrowserManager(bot=bot, admin_id=settings.admin_id)
             self._adapters[SourceType.FACEBOOK_SELENIUM] = SeleniumFacebookAdapter(
                 self._selenium_browser
             )

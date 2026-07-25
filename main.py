@@ -84,6 +84,7 @@ async def main() -> None:
             publish_queue,
             settings,
             telegram_adapter=telegram_adapter,
+            bot=bot,
         )
 
         publish_queue.start()

@@ -26,22 +26,56 @@ import asyncio
 from pathlib import Path
 from typing import Callable, TypeVar
 
+from aiogram import Bot
 from loguru import logger
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 
 from config.settings import get_settings
 
 T = TypeVar("T")
 
+# URL fragments Facebook/Instagram use for their own login-wall/checkpoint
+# pages — a reliable signal that the whole shared session needs a human to
+# re-authenticate, as opposed to "this specific page just has no posts
+# right now". Confirmed directly in production: Facebook's automation
+# checkpoint lands on a `/checkpoint/...` URL.
+_LOGGED_OUT_URL_MARKERS = ("/checkpoint/", "/challenge/", "/accounts/login")
+
+
+def is_logged_out(driver: webdriver.Chrome) -> bool:
+    """True if the current page looks like a login wall/checkpoint.
+
+    Used by every `*_SELENIUM` adapter right after navigating, to tell "no
+    content on this particular page" (normal, not a failure) apart from
+    "the shared session itself is logged out" (a real failure that should
+    alert someone, since it silently blocks every source sharing this
+    browser until a human re-authenticates).
+    """
+    if any(marker in driver.current_url for marker in _LOGGED_OUT_URL_MARKERS):
+        return True
+    return bool(driver.find_elements(By.CSS_SELECTOR, "input[type='password']"))
+
+
+class SessionLoggedOutError(Exception):
+    """Raised by a `*_SELENIUM` adapter when `is_logged_out()` detects a login wall."""
+
 
 class SeleniumBrowserManager:
     """Owns the one shared Chrome instance used by every Selenium source adapter."""
 
-    def __init__(self) -> None:
+    def __init__(self, bot: Bot | None = None, admin_id: int = 0) -> None:
         self._driver: webdriver.Chrome | None = None
         self._lock = asyncio.Lock()
+        self._bot = bot
+        self._admin_id = admin_id
+        # Tracks whether the admin has already been told about the *current*
+        # logged-out episode, so 98+ sources sharing this one browser send
+        # one alert, not one per source per poll — and resets the moment a
+        # fetch succeeds again so a *future* episode still alerts.
+        self._logged_out_alerted = False
 
     async def run(self, fn: Callable[[webdriver.Chrome], T]) -> T:
         """Run `fn` against the shared driver, serialized behind the one lock.
@@ -50,16 +84,54 @@ class SeleniumBrowserManager:
         `WebDriverException` (the browser/session itself broke, not just
         "no content found"), the driver is discarded so the next call
         launches a fresh one instead of repeatedly failing against a dead
-        session.
+        session. If `fn` raises `SessionLoggedOutError`, the admin is
+        alerted once (not once per source) and the error is re-raised so
+        the caller's normal per-source failure handling still applies.
         """
         async with self._lock:
             driver = self._driver or self._launch_driver()
             try:
-                return await asyncio.to_thread(fn, driver)
+                result = await asyncio.to_thread(fn, driver)
+            except SessionLoggedOutError as exc:
+                await self._alert_logged_out(str(exc))
+                raise
             except WebDriverException:
                 logger.warning("Shared Selenium browser hit a WebDriver error; discarding it")
                 self._discard_driver()
                 raise
+            await self._alert_recovered()
+            return result
+
+    async def _alert_logged_out(self, detail: str) -> None:
+        if self._logged_out_alerted:
+            return
+        self._logged_out_alerted = True
+        logger.warning("Shared Selenium session appears logged out: {}", detail)
+        if not (self._bot and self._admin_id):
+            return
+        try:
+            await self._bot.send_message(
+                self._admin_id,
+                "⚠️ الجلسة المشتركة (فيسبوك/إنستغرام) خرجت من تسجيل الدخول أو حُظرت.\n"
+                f"التفاصيل: {detail}\n"
+                "راجع السيرفر لإعادة تسجيل الدخول — كل المصادر المشتركة بهذا المتصفح "
+                "متوقفة حتى تتم إعادة الدخول.",
+            )
+        except Exception:  # noqa: BLE001 - alerting must never crash a poll
+            logger.exception("Failed to send logged-out alert to admin")
+
+    async def _alert_recovered(self) -> None:
+        if not self._logged_out_alerted:
+            return
+        self._logged_out_alerted = False
+        if not (self._bot and self._admin_id):
+            return
+        try:
+            await self._bot.send_message(
+                self._admin_id, "✅ الجلسة المشتركة رجعت تعمل بشكل طبيعي."
+            )
+        except Exception:  # noqa: BLE001 - alerting must never crash a poll
+            logger.exception("Failed to send session-recovered alert to admin")
 
     async def aclose(self) -> None:
         """Quit the shared browser, if one was ever launched. Called on bot shutdown."""
