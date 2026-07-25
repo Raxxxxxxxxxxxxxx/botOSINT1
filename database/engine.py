@@ -60,6 +60,7 @@ def _add_missing_columns(conn: Connection) -> None:
 _NEW_ENUM_VALUES: list[tuple[str, str]] = [
     ("itemstatus", "DELETED"),
     ("sourcetype", "FACEBOOK_SELENIUM"),
+    ("sourcetype", "INSTAGRAM_SELENIUM"),
 ]
 
 

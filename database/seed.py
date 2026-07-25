@@ -145,6 +145,22 @@ _FACEBOOK_POLL_INTERVAL_SECONDS = 900
 # round, which would cost ~1-1.5GB more RAM and hit the account harder).
 _FACEBOOK_SELENIUM_POLL_INTERVAL_SECONDS = 1200
 
+# Instagram profile posts via the same shared Selenium/Chrome browser as
+# FACEBOOK_SELENIUM (see scrapers/instagram_selenium_adapter.py). Each source
+# costs one grid-page visit plus one visit per recent post (unlike Facebook's
+# single-page scrape), so this starts as a small validation batch — the two
+# accounts whose extraction was manually confirmed to return real captions,
+# images, and dates via scripts/selenium_instagram_experiment.py on
+# 2026-07-25 — rather than seeding the full OSINT-research candidate list
+# at once. Expand this list once these prove reliable in production, mirroring
+# how the Facebook Selenium migration itself started as a 10-source batch.
+_INSTAGRAM_SELENIUM_POLL_INTERVAL_SECONDS = 1200
+
+_INSTAGRAM_SELENIUM_SEED_SOURCES: list[tuple[str, str]] = [
+    ("الإخبارية السورية (Instagram)", "https://www.instagram.com/alekhbariahsy/"),
+    ("صوت الرقة (Instagram)", "https://www.instagram.com/ssyria_963/"),
+]
+
 _FACEBOOK_SEED_SOURCES: list[tuple[str, str]] = [
     ("FB Profile 100078811247728", "https://www.facebook.com/profile.php?id=100078811247728"),
     ("mohamad.alothman.129", "https://www.facebook.com/mohamad.alothman.129"),
@@ -295,12 +311,30 @@ async def seed_sources() -> None:
             )
             fb_inserted += 1
 
+        ig_inserted = 0
+        if settings.selenium_facebook_enabled:
+            for name, url in _INSTAGRAM_SELENIUM_SEED_SOURCES:
+                exists = await session.execute(select(Source.id).where(Source.url == url))
+                if exists.scalar_one_or_none() is not None:
+                    continue
+                session.add(
+                    Source(
+                        name=name,
+                        type=SourceType.INSTAGRAM_SELENIUM,
+                        url=url,
+                        enabled=True,
+                        poll_interval_seconds=_INSTAGRAM_SELENIUM_POLL_INTERVAL_SECONDS,
+                    )
+                )
+                ig_inserted += 1
+
         await session.commit()
         logger.info(
-            "Seeded {} new HTML/RSS source(s) (disabled pending selector setup) "
-            "and {} new Facebook source(s) (enabled)",
+            "Seeded {} new HTML/RSS source(s) (disabled pending selector setup), "
+            "{} new Facebook source(s) (enabled), and {} new Instagram source(s) (enabled)",
             inserted,
             fb_inserted,
+            ig_inserted,
         )
 
 

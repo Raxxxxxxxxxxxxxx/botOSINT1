@@ -12,12 +12,14 @@ Only usable on infrastructure with enough RAM for a real browser process:
 the Phase-2 "no headless browser" rule was scoped to Railway's free tier
 and no longer applies once self-hosted.
 
-One Chrome instance is shared across every FACEBOOK_SELENIUM source (not
-launched per-source or per-poll) — an `asyncio.Lock` serializes concurrent
-polls onto it instead of paying for a separate browser process per source.
-At roughly 10-20s per page and a several-minute poll interval per source,
-sequential fetches comfortably fit inside the scheduling window even with
-several dozen sources configured.
+The actual browser is owned by a shared `SeleniumBrowserManager`
+(scrapers/selenium_browser.py), not this adapter — every `*_SELENIUM`
+adapter (Facebook, Instagram, ...) runs through the same one Chrome
+process and profile, since Chrome only allows one process per profile
+directory at a time. At roughly 10-20s per page and a several-minute poll
+interval per source, sequential fetches comfortably fit inside the
+scheduling window even with several dozen sources configured across
+multiple platforms.
 
 Deliberately does not scroll or paginate: it grabs whatever posts are
 already visible on load (newest-first on a Page/profile timeline) and lets
@@ -31,13 +33,9 @@ bursts more posts than that between polls will silently miss the excess.
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
-
 from loguru import logger
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, WebDriverException
-from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -45,6 +43,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from config.settings import get_settings
 from models.source import Source
 from scrapers.base import RawItem, SourceAdapter
+from scrapers.selenium_browser import SeleniumBrowserManager
 
 POST_URL_MARKERS = ("/posts/", "/videos/", "/photos/", "story_fbid=", "/permalink/", "/reel/")
 
@@ -52,23 +51,13 @@ POST_URL_MARKERS = ("/posts/", "/videos/", "/photos/", "story_fbid=", "/permalin
 class SeleniumFacebookAdapter(SourceAdapter):
     """Fetches the newest visible posts from a public Facebook Page/profile via Selenium."""
 
-    def __init__(self) -> None:
-        self._driver: webdriver.Chrome | None = None
-        self._lock = asyncio.Lock()
+    def __init__(self, browser: SeleniumBrowserManager) -> None:
+        self._browser = browser
 
     async def fetch(self, source: Source) -> list[RawItem]:
-        async with self._lock:
-            return await asyncio.to_thread(self._fetch_sync, source.url)
+        return await self._browser.run(lambda driver: self._fetch_sync(driver, source.url))
 
-    async def aclose(self) -> None:
-        """Quit the shared browser, if one was ever launched. Called on bot shutdown."""
-        async with self._lock:
-            if self._driver is not None:
-                await asyncio.to_thread(self._driver.quit)
-                self._driver = None
-
-    def _fetch_sync(self, page_url: str) -> list[RawItem]:
-        driver = self._driver or self._launch_driver()
+    def _fetch_sync(self, driver: webdriver.Chrome, page_url: str) -> list[RawItem]:
         try:
             driver.get(page_url)
             _dismiss_cookie_banner(driver)
@@ -82,63 +71,10 @@ class SeleniumFacebookAdapter(SourceAdapter):
                 page_url,
             )
             return []
-        except WebDriverException as exc:
-            logger.warning(
-                "Selenium Facebook fetch for {} hit a WebDriver error, recreating the "
-                "browser before re-raising: {}",
-                page_url,
-                exc,
-            )
-            self._discard_driver()
-            raise
 
         settings = get_settings()
         posts = _extract_posts(driver)[: settings.selenium_facebook_max_posts]
         return [RawItem(url=p["url"], title=_first_line(p["text"]), content=p["text"]) for p in posts]
-
-    def _launch_driver(self) -> webdriver.Chrome:
-        settings = get_settings()
-        profile_dir = Path(settings.selenium_chrome_profile_dir).resolve()
-        profile_dir.mkdir(parents=True, exist_ok=True)
-
-        options = Options()
-        if settings.selenium_chrome_binary:
-            options.binary_location = settings.selenium_chrome_binary
-        if settings.selenium_facebook_headless:
-            options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--window-size=1280,1600")
-        options.add_argument("--lang=ar")
-        options.add_argument(f"--user-data-dir={profile_dir}")
-        # Facebook's timeline is media-heavy; left uncapped, Chrome's disk cache
-        # grows unbounded over months of continuous polling (observed ~170MB
-        # after a handful of manual test runs). 150MB is plenty to keep the
-        # session warm without the profile directory creeping indefinitely.
-        options.add_argument("--disk-cache-size=157286400")
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option("useAutomationExtension", False)
-        options.add_argument(
-            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        )
-        driver = webdriver.Chrome(options=options)
-        driver.execute_cdp_cmd(
-            "Page.addScriptToEvaluateOnNewDocument",
-            {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
-        )
-        self._driver = driver
-        logger.info("Launched shared Selenium Chrome instance for Facebook polling")
-        return driver
-
-    def _discard_driver(self) -> None:
-        if self._driver is not None:
-            try:
-                self._driver.quit()
-            except Exception:  # noqa: BLE001 - best-effort cleanup of an already-broken session
-                pass
-            self._driver = None
 
 
 def _dismiss_cookie_banner(driver: webdriver.Chrome) -> None:

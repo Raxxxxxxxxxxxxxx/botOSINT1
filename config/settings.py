@@ -162,6 +162,18 @@ class Settings:
     selenium_facebook_max_posts: int = field(
         default_factory=lambda: _get_int("SELENIUM_FACEBOOK_MAX_POSTS", 5)
     )
+    # Instagram profile posts via the same shared Selenium browser (see
+    # scrapers/instagram_selenium_adapter.py) — gated by the same
+    # `selenium_facebook_enabled` flag above, since both share one Chrome
+    # profile and can't run independently of each other.
+    # Kept low deliberately: each post costs its own page visit (unlike
+    # Facebook's single-page timeline scrape), and every *_SELENIUM adapter
+    # serializes onto the one shared browser — a large value here delays
+    # every other Selenium source's poll too. 5 is enough to catch up
+    # between polls of the same source at a several-minute interval.
+    selenium_instagram_max_posts: int = field(
+        default_factory=lambda: _get_int("SELENIUM_INSTAGRAM_MAX_POSTS", 5)
+    )
     selenium_chrome_profile_dir: str = field(
         default_factory=lambda: os.getenv(
             "SELENIUM_CHROME_PROFILE_DIR", "./data/selenium_chrome_profile"

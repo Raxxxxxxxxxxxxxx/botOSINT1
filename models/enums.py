@@ -16,6 +16,10 @@ class SourceType(str, enum.Enum):
     # Facebook Page posts via a local Selenium/Chrome browser (free, but only
     # viable once self-hosted — see scrapers/facebook_selenium_adapter.py).
     FACEBOOK_SELENIUM = "facebook_selenium"
+    # Instagram profile posts via the same shared local Selenium/Chrome browser
+    # as FACEBOOK_SELENIUM (see scrapers/instagram_selenium_adapter.py) — login
+    # bridges off the Facebook session already in that shared browser profile.
+    INSTAGRAM_SELENIUM = "instagram_selenium"
     # Reserved for a future phase (Phase-1 research flagged these as legally/technically
     # fragile in 2026); not implemented by any adapter yet, kept here so adding them later
     # is a data migration, not an architecture change.

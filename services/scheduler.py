@@ -27,7 +27,9 @@ from scrapers.base import SourceAdapter
 from scrapers.facebook_adapter import FacebookPostsAdapter
 from scrapers.facebook_selenium_adapter import SeleniumFacebookAdapter
 from scrapers.html_adapter import HTMLSourceAdapter
+from scrapers.instagram_selenium_adapter import SeleniumInstagramAdapter
 from scrapers.rss_adapter import RSSSourceAdapter
+from scrapers.selenium_browser import SeleniumBrowserManager
 from services.pipeline import NewsPipeline
 from services.publisher import PublishQueue
 
@@ -52,8 +54,18 @@ class SourceScheduler:
             SourceType.HTML: HTMLSourceAdapter(http_session),
             SourceType.FACEBOOK: FacebookPostsAdapter(http_session),
         }
+        self._selenium_browser: SeleniumBrowserManager | None = None
         if settings.selenium_facebook_enabled:
-            self._adapters[SourceType.FACEBOOK_SELENIUM] = SeleniumFacebookAdapter()
+            # One shared browser (and Chrome profile) behind every
+            # `*_SELENIUM` adapter — see scrapers/selenium_browser.py for why
+            # this can't be a separate browser per platform.
+            self._selenium_browser = SeleniumBrowserManager()
+            self._adapters[SourceType.FACEBOOK_SELENIUM] = SeleniumFacebookAdapter(
+                self._selenium_browser
+            )
+            self._adapters[SourceType.INSTAGRAM_SELENIUM] = SeleniumInstagramAdapter(
+                self._selenium_browser
+            )
         if telegram_adapter is not None:
             self._adapters[SourceType.TELEGRAM] = telegram_adapter
 
@@ -78,6 +90,8 @@ class SourceScheduler:
             aclose = getattr(adapter, "aclose", None)
             if aclose is not None:
                 await aclose()
+        if self._selenium_browser is not None:
+            await self._selenium_browser.aclose()
 
     def _schedule_source(self, source: Source) -> None:
         trigger = IntervalTrigger(
@@ -134,6 +148,17 @@ class SourceScheduler:
                 accepted: list[NewsItem] = []
             else:
                 accepted = await self._pipeline.process_batch(session, source, raw_items)
+                # A stale CSS selector or a client-side-rendered listing page
+                # makes an HTML/RSS source return 0 raw items forever with no
+                # exception ever raised — invisible to the circuit breaker,
+                # which only counts hard failures. Logging the raw count here
+                # is what makes that silent breakage diagnosable at all.
+                logger.info(
+                    "Source '{}': fetched {} raw item(s), {} accepted",
+                    source.name,
+                    len(raw_items),
+                    len(accepted),
+                )
             self._record_success(source)
             await session.commit()
 
