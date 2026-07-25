@@ -75,10 +75,16 @@ class Settings:
     http_timeout_seconds: float = field(
         default_factory=lambda: _get_float("HTTP_TIMEOUT_SECONDS", 15.0)
     )
+    # A self-identifying UA ("RaqqaNewsBot/1.0") was the default here until
+    # this was confirmed directly against a real source (thawra.sy: 403 with
+    # the old UA, 200 with this one) — matches the UA the Selenium adapters
+    # already use, for the same reason (looking like a real browser instead
+    # of a named bot avoids some WAFs' bot-signature blocking outright).
     http_user_agent: str = field(
         default_factory=lambda: os.getenv(
             "HTTP_USER_AGENT",
-            "Mozilla/5.0 (compatible; RaqqaNewsBot/1.0; +https://t.me/)",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
         )
     )
 

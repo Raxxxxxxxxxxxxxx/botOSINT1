@@ -121,6 +121,23 @@ _SEED_SOURCES: list[tuple[str, str, SourceType]] = [
     ("العربي الجديد", "https://www.alaraby.co.uk/syria", SourceType.HTML),
     ("The New Arab", "https://www.newarab.com/syria", SourceType.HTML),
     ("Nedaa Post نداء بوست", "https://nedaa-post.com/", SourceType.HTML),
+    # Prominent, high-frequency outlets requested by the user 2026-07-25.
+    # All verified reachable and selector-tested against the real
+    # HTMLSourceAdapter (not just a manual page inspection) before being
+    # added — see _CONFIGURED_SELECTORS. Several others from that same
+    # request stay unlisted rather than seeded-disabled, since they're
+    # confirmed hard blocks unlikely to change: Reuters Arabic (401 on
+    # every UA tried), Al Jumhuriya (403 on every UA tried), Asharq News
+    # (asharq.com, 403 — distinct outlet from Asharq Al-Awsat/aawsat.com
+    # below, which works fine), and DW Arabic (redirects to a single fixed
+    # article page instead of a real listing, not usable as-is).
+    ("حلب اليوم", "https://halabtodaytv.net", SourceType.HTML),
+    ("وكالة ستيب الإخبارية", "https://stepagency-sy.net", SourceType.HTML),
+    ("فريفاي سوريا (Verify-Sy)", "https://www.verify-sy.com/", SourceType.HTML),
+    ("هاشتاغ سوريا", "https://hashtagsyria.com", SourceType.HTML),
+    ("الثورة (صحيفة سورية رسمية)", "https://thawra.sy", SourceType.HTML),
+    ("Asharq Al-Awsat الشرق الأوسط", "https://www.aawsat.com", SourceType.HTML),
+    ("TRT Arabi", "https://trtarabi.com", SourceType.HTML),
 ]
 
 # Facebook Pages/profiles supplied directly by the user (resolved from
@@ -345,7 +362,7 @@ async def seed_sources() -> None:
 # bot challenge, or that render their listing client-side via JS (no selector
 # can fix either — the HTML adapter does a plain HTTP GET, no headless
 # browser, per the Phase-2 resource-budget decision), are deliberately left
-# out and stay disabled: North Press Agency (npasyria.com), هذا اليوم
+# out and stay disabled: هذا اليوم
 # (hathalyoum.net), تلفزيون سوريا (syria.tv), زمان الوصل (both editions),
 # Orient Net, SOHR, Kurdistan24, SDF Press, رأي اليوم, المدن (Al Arabiya and
 # Al Modon both return a literal "Access Denied" Akamai page), العربي
@@ -358,6 +375,9 @@ async def seed_sources() -> None:
 # than left disabled: the former now serves a German-language casino/
 # gambling site and the latter is a bare GoDaddy Website Builder
 # placeholder — both domains have been abandoned by their original owners.
+# North Press Agency (npasyria.com) was re-tested 2026-07-25 and is no
+# longer blocked (whatever Cloudflare/Akamai challenge existed before isn't
+# showing up now) — moved from that disabled list below to enabled.
 _CONFIGURED_SELECTORS: dict[str, dict[str, object]] = {
     "https://7al.net/": {"list_selector": "a.card", "enabled": True},
     "https://deirezzor24.net/": {"list_selector": ".jeg_post_title", "enabled": True},
@@ -395,6 +415,22 @@ _CONFIGURED_SELECTORS: dict[str, dict[str, object]] = {
         "list_selector": ".cell-carousel__item-link",
         "enabled": True,
     },
+    # Added 2026-07-25, all verified against the real HTMLSourceAdapter
+    # (see module docstring at top for the general verification approach).
+    # Bare-class ".title" over-matches on this site (66 hits vs. 5 with the
+    # tag qualifier — catches unrelated ".title" elements elsewhere on the
+    # page), so this one stays tag-qualified unlike most entries here.
+    "https://npasyria.com/": {"list_selector": "h2.title", "enabled": True},
+    "https://halabtodaytv.net": {"list_selector": ".jeg_post_title", "enabled": True},
+    "https://stepagency-sy.net": {"list_selector": ".calm-article-item", "enabled": True},
+    "https://www.verify-sy.com/": {"list_selector": ".font-semibold", "enabled": True},
+    "https://hashtagsyria.com": {"list_selector": ".nuxt-link", "enabled": True},
+    "https://thawra.sy": {"list_selector": ".post-title", "enabled": True},
+    "https://www.aawsat.com": {"list_selector": ".font-bold", "enabled": True},
+    # Bare-class ".article-hover-effect" double-counts here (57 hits vs. 25
+    # tag-qualified — the class is on both a wrapping element and the inner
+    # <a>), so this one stays tag-qualified too.
+    "https://trtarabi.com": {"list_selector": "a.article-hover-effect", "enabled": True},
 }
 
 
