@@ -17,6 +17,7 @@ from html import escape as escape_html
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from loguru import logger
+from sqlalchemy import select
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from config.settings import get_settings
@@ -79,6 +80,28 @@ class PublishQueue:
     async def enqueue(self, item: NewsItem) -> None:
         """Add an accepted item to the outbound queue."""
         await self._queue.put(item)
+
+    async def enqueue_pending_from_db(self) -> int:
+        """Re-enqueue any item stuck at PENDING from a previous run.
+
+        The in-memory queue isn't persisted — if the process restarts
+        before an accepted item's turn to send comes up, that item
+        silently vanishes from the queue while its row stays PENDING
+        forever, since nothing else ever revisits it. Confirmed in
+        production: 173 items stuck this way, some over 3 days old, after
+        a run of frequent deploy-triggered restarts. Called once on
+        startup, oldest first.
+        """
+        async with get_session() as session:
+            result = await session.execute(
+                select(NewsItem)
+                .where(NewsItem.status == ItemStatus.PENDING)
+                .order_by(NewsItem.created_at.asc())
+            )
+            items = list(result.scalars())
+        for item in items:
+            await self.enqueue(item)
+        return len(items)
 
     async def _run(self) -> None:
         while True:

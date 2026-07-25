@@ -88,6 +88,9 @@ async def main() -> None:
         )
 
         publish_queue.start()
+        requeued = await publish_queue.enqueue_pending_from_db()
+        if requeued:
+            logger.info("Re-queued {} item(s) stuck at PENDING from a previous run", requeued)
         await scheduler.start()
 
         try:
